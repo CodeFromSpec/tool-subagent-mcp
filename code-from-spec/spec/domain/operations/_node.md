@@ -1,6 +1,6 @@
 ---
-version: 1
-parent_version: 1
+version: 7
+parent_version: 2
 ---
 
 # ROOT/domain/operations
@@ -14,15 +14,14 @@ operation to run based on the CLI argument.
 
 ### Operation selection
 
-The first CLI argument (`os.Args[1]`) identifies the operation.
-Each operation defines its own set of MCP tools and its own
-additional arguments.
+The first CLI argument identifies the operation. Each operation
+defines its own set of MCP tools and its own additional arguments.
 
-Currently defined operations:
+### Usage message
 
-| Argument | Operation |
-|---|---|
-| `codegen` | Code generation from a spec leaf node. |
+When the operation argument is absent, empty, or unrecognized,
+the tool prints a usage message listing all available operations
+and exits 1.
 
 ### Extensibility
 
@@ -33,5 +32,5 @@ are unaffected.
 ## Constraints
 
 - If the operation argument is absent, empty, or unrecognized,
-  the tool prints a usage message to stderr and exits 1.
+  the tool prints a usage message and exits 1.
 - Operation names are lowercase, single words.
