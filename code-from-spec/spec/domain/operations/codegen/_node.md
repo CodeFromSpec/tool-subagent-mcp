@@ -40,11 +40,13 @@ session.
 ### CLI signature
 
 ```
-subagent-mcp codegen <leaf-logical-name>
+subagent-mcp codegen <target-logical-name>
 ```
 
-`os.Args[2]` is the logical name of the leaf node to generate.
-Example: `ROOT/payments/fees/calculation`.
+`os.Args[2]` is the logical name of the target node — either a leaf
+spec node (`ROOT/...`) or a test node (`TEST/...`).
+Examples: `ROOT/payments/fees/calculation`,
+`TEST/payments/fees/calculation`.
 
 ### MCP config
 
@@ -69,8 +71,9 @@ Example: `ROOT/payments/fees/calculation`.
 
 ## Constraints
 
-- `os.Args[2]` must be a `ROOT/` logical name. Absent, empty, or
-  invalid values cause the server to exit 1 with a clear error.
+- `os.Args[2]` must be a valid `ROOT/` or `TEST/` logical name.
+  Absent, empty, or invalid values cause the tool to exit 1 with
+  a clear error.
 - Native Claude Code file tools (Read, Write, Glob) must be withheld
   from the subagent. The MCP config must not grant them.
 

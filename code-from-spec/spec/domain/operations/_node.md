@@ -7,7 +7,7 @@ parent_version: 1
 
 ## Intent
 
-Defines what an operation is and how the server selects which
+Defines what an operation is and how the tool selects which
 operation to run based on the CLI argument.
 
 ## Contracts
@@ -33,5 +33,5 @@ are unaffected.
 ## Constraints
 
 - If the operation argument is absent, empty, or unrecognized,
-  the server prints a usage message to stderr and exits 1.
+  the tool prints a usage message to stderr and exits 1.
 - Operation names are lowercase, single words.

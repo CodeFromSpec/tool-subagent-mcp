@@ -21,7 +21,7 @@ is declared in the session node's `implements` field.
 
 ### Validation
 
-Before writing, the server checks that `path` appears in the
+Before writing, the tool checks that `path` appears in the
 `implements` list of the session leaf node's frontmatter. If it
 does not, the tool returns an error and does not write anything.
 
@@ -45,4 +45,4 @@ The write is unconditional once validation passes.
 - `path` is always relative to the project root. Absolute paths
   and paths with `..` components are rejected.
 - The validation against `implements` is the security boundary of
-  this server. It must not be bypassable.
+  this tool. It must not be bypassable.

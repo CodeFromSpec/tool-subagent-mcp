@@ -46,10 +46,10 @@ cmd/subagent-mcp/
 
 - **Startup errors** (missing `CFS_NODE`, unresolvable session node,
   unreadable leaf frontmatter) — print to stderr and exit non-zero.
-  The server does not start if the session cannot be established.
-- **Tool errors** — returned as MCP tool error responses. The server
+  The tool does not start if the session cannot be established.
+- **Tool errors** — returned as MCP tool error responses. The tool
   continues running after a tool error.
-- The server never panics. All errors are handled explicitly.
+- The tool never panics. All errors are handled explicitly.
 
 ## Constraints
 

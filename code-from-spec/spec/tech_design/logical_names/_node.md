@@ -19,7 +19,7 @@ by chain resolution and write_file validation.
 
 ## Context
 
-This server deals with two namespaces: `ROOT/` for spec nodes and
+This tool deals with two namespaces: `ROOT/` for spec nodes and
 `EXTERNAL/` for external dependencies. Test nodes (`TEST/`) are not
 part of the chain and are not handled here.
 

@@ -61,5 +61,5 @@ depends_on:
 ```
 
 Files in the folder that do not match any pattern are not included.
-The server must ignore subfolders and files it does not need — only
+The tool must ignore subfolders and files it does not need — only
 `_external.md` plus filtered files are read.
