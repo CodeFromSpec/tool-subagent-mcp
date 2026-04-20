@@ -1,5 +1,5 @@
 ---
-version: 2
+version: 3
 ---
 
 # ROOT
@@ -8,7 +8,7 @@ version: 2
 
 Local MCP server for Code from Spec subagents. Runs as a stdio
 process inside any Code from Spec project, exposes a set of tools
-determined by the requested operation, and restricts the subagent
+determined by the requested mode, and restricts the subagent
 to exactly those tools.
 
 ## Context
@@ -16,11 +16,11 @@ to exactly those tools.
 Claude Code offers no native mechanism to restrict a subagent's
 filesystem access or scope its actions to a specific task. This
 server is the enforcement layer: the orchestrator launches it with
-a specific operation and parameters, and the subagent can only do
+a specific mode and parameters, and the subagent can only do
 what the server's tools allow.
 
-Each operation defines its own tool set and its own argument schema.
-The server selects the operation at startup and delegates everything
+Each mode defines its own tool set and its own argument schema.
+The server selects the mode at startup and delegates everything
 else to it.
 
 ## Contracts
@@ -28,13 +28,13 @@ else to it.
 ### Invocation
 
 ```
-subagent-mcp <operation> [args...]
+subagent-mcp <mode> [args...]
 subagent-mcp --help
 ```
 
 If the first argument is `--help` or `-h`, the server prints a
 usage message to stdout and exits 0. This takes precedence over
-operation dispatch.
+mode dispatch.
 
 The server is launched by the orchestrator via MCP stdio config:
 
@@ -44,7 +44,7 @@ The server is launched by the orchestrator via MCP stdio config:
     "subagent-mcp": {
       "type": "stdio",
       "command": "<path-to-subagent-mcp>",
-      "args": ["<operation>", "<arg1>", "..."]
+      "args": ["<mode>", "<arg1>", "..."]
     }
   }
 }
@@ -79,13 +79,13 @@ required.
 ### Concurrency
 
 Multiple instances may run in parallel without conflict. Each is an
-independent OS process with its own operation and session state.
+independent OS process with its own mode and state.
 
 ## Constraints
 
-- If the operation argument is absent or unrecognized, the server
+- If the mode argument is absent or unrecognized, the server
   prints a usage message and exits 1.
-- Each operation is responsible for its own argument validation and
+- Each mode is responsible for its own argument validation and
   tool registration.
 
 ## Preconditions
@@ -110,14 +110,14 @@ to be shared.
 
 ### Positional CLI arguments, not environment variables
 
-The operation and its parameters are positional CLI arguments. This
+The mode and its parameters are positional CLI arguments. This
 is idiomatic for CLI tools, makes the process visible in `ps` output
 when debugging parallel runs, and makes local testing trivial
 (`subagent-mcp codegen ROOT/x/y`).
 
-### Operation as first argument
+### Mode as first argument
 
-The first argument selects the operation. Each operation owns its
-own argument schema and tool set. This allows the server to grow to
-cover new subagent workflows without changing existing operations or
+The first argument selects the mode. Each mode owns its own
+argument schema and tool set. This allows the server to grow to
+cover new subagent workflows without changing existing modes or
 the dispatch mechanism.
