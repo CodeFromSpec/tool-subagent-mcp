@@ -1,11 +1,11 @@
 ---
-version: 1
-parent_version: 1
+version: 3
+parent_version: 2
 depends_on:
   - path: ROOT/domain/operations/codegen/tools/load_context
-    version: 1
+    version: 2
   - path: ROOT/tech_design/operations/codegen/chain_resolver
-    version: 1
+    version: 3
 implements:
   - cmd/subagent-mcp/operations/codegen/load_context.go
 ---

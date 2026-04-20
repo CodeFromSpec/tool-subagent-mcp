@@ -1,13 +1,13 @@
 ---
-version: 1
-parent_version: 1
+version: 3
+parent_version: 2
 depends_on:
   - path: ROOT/domain/operations/codegen/chain
-    version: 1
+    version: 2
   - path: ROOT/tech_design/logical_names
-    version: 1
+    version: 3
   - path: ROOT/tech_design/frontmatter
-    version: 1
+    version: 2
 implements:
   - cmd/subagent-mcp/operations/codegen/chainresolver.go
 ---

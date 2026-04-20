@@ -1,6 +1,6 @@
 ---
-version: 1
-parent_version: 1
+version: 2
+parent_version: 2
 ---
 
 # ROOT/tech_design

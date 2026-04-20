@@ -1,11 +1,11 @@
 ---
-version: 1
-parent_version: 1
+version: 2
+parent_version: 2
 depends_on:
   - path: ROOT/domain/operations/codegen/tools/write_file
-    version: 1
+    version: 2
   - path: ROOT/tech_design/frontmatter
-    version: 1
+    version: 2
 implements:
   - cmd/subagent-mcp/operations/codegen/write_file.go
 ---

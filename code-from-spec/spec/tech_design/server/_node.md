@@ -1,11 +1,11 @@
 ---
-version: 1
-parent_version: 1
+version: 4
+parent_version: 2
 depends_on:
   - path: ROOT/domain/operations
-    version: 1
+    version: 7
   - path: ROOT/tech_design/operations
-    version: 1
+    version: 2
 implements:
   - cmd/subagent-mcp/main.go
 ---
