@@ -1,9 +1,9 @@
 ---
-version: 6
-parent_version: 3
+version: 9
+parent_version: 4
 depends_on:
-  - path: ROOT/domain/modes/codegen/chain
-    version: 4
+  - path: EXTERNAL/codefromspec
+    version: 1
 implements:
   - cmd/subagent-mcp/logicalnames.go
 ---

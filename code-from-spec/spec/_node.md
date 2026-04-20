@@ -1,27 +1,23 @@
 ---
-version: 3
+version: 6
 ---
 
 # ROOT
 
 ## Intent
 
-Local MCP server for Code from Spec subagents. Runs as a stdio
-process inside any Code from Spec project, exposes a set of tools
-determined by the requested mode, and restricts the subagent
-to exactly those tools.
+Local MCP server for Code from Spec subagents. Runs as a process
+inside any Code from Spec project, exposes a set of tools determined
+by the requested mode, and restricts the subagent to exactly those
+tools.
 
 ## Context
 
-Claude Code offers no native mechanism to restrict a subagent's
-filesystem access or scope its actions to a specific task. This
-server is the enforcement layer: the orchestrator launches it with
-a specific mode and parameters, and the subagent can only do
-what the server's tools allow.
-
-Each mode defines its own tool set and its own argument schema.
-The server selects the mode at startup and delegates everything
-else to it.
+AI agent frameworks typically offer no native mechanism to restrict
+a subagent's filesystem access or scope its actions to a specific
+task. This server is the enforcement layer: the orchestrator
+launches it with a specific mode and parameters, and the subagent
+can only do what the server's tools allow.
 
 ## Contracts
 
@@ -29,46 +25,7 @@ else to it.
 
 ```
 subagent-mcp <mode> [args...]
-subagent-mcp --help
 ```
-
-If the first argument is `--help` or `-h`, the server prints a
-usage message to stdout and exits 0. This takes precedence over
-mode dispatch.
-
-The server is launched by the orchestrator via MCP stdio config:
-
-```json
-{
-  "mcpServers": {
-    "subagent-mcp": {
-      "type": "stdio",
-      "command": "<path-to-subagent-mcp>",
-      "args": ["<mode>", "<arg1>", "..."]
-    }
-  }
-}
-```
-
-The orchestrator writes that JSON to a temporary file and invokes
-the subagent pointing to it. Managing this file — creation, path
-choice, and cleanup — is the orchestrator's responsibility, not
-the server's. A practical pattern:
-
-```bash
-# orchestrator generates a UUID to avoid collisions between
-# parallel subagent invocations
-CONFIG=/tmp/subagent-mcp-<uuid>.json
-echo '{ ... }' > "$CONFIG"
-claude --mcp-config "$CONFIG" "generate the code for this node"
-rm "$CONFIG"
-```
-
-Using a per-invocation UUID in the filename ensures multiple
-subagents running in parallel each get their own config file with
-no risk of collision. A dedicated scratch directory (e.g. `.tmp/`
-at the project root, gitignored) is a clean alternative to `/tmp`
-for projects that prefer to keep temporary files local.
 
 ### Distribution
 
@@ -93,31 +50,15 @@ independent OS process with its own mode and state.
 This tool does not verify spec correctness or staleness. It assumes
 the orchestrator has already run `staleness-check` and confirmed
 that the target node and its dependencies are up to date before
-invoking a codegen session. Generating code from a stale spec may
+invoking the subagent. Generating code from a stale spec may
 produce incorrect results — enforcing this precondition is the
 orchestrator's responsibility.
 
 ## Decisions
 
-### stdio transport
+### Extensible by design
 
-Each server instance is a child process of the orchestrator, tied
-to a single subagent invocation. stdio requires zero port
-configuration, has zero conflicts between parallel instances, and
-couples the process lifetime automatically to the subagent's. The
-isolation-per-process is a feature — server instances are not meant
-to be shared.
-
-### Positional CLI arguments, not environment variables
-
-The mode and its parameters are positional CLI arguments. This
-is idiomatic for CLI tools, makes the process visible in `ps` output
-when debugging parallel runs, and makes local testing trivial
-(`subagent-mcp codegen ROOT/x/y`).
-
-### Mode as first argument
-
-The first argument selects the mode. Each mode owns its own
-argument schema and tool set. This allows the server to grow to
-cover new subagent workflows without changing existing modes or
-the dispatch mechanism.
+Although the tool was created for code generation, it is natural
+to extend it to support other subagent workflows in the future.
+The mode-based architecture allows adding new capabilities without
+changing existing ones.

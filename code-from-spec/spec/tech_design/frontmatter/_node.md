@@ -1,9 +1,9 @@
 ---
-version: 5
-parent_version: 3
+version: 8
+parent_version: 4
 depends_on:
-  - path: ROOT/domain/modes/codegen/chain
-    version: 4
+  - path: EXTERNAL/codefromspec
+    version: 1
 implements:
   - cmd/subagent-mcp/frontmatter.go
 ---

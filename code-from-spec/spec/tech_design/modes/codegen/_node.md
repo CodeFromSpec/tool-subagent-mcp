@@ -1,9 +1,9 @@
 ---
-version: 4
-parent_version: 4
+version: 7
+parent_version: 5
 depends_on:
   - path: ROOT/domain/modes/codegen
-    version: 6
+    version: 17
 ---
 
 # ROOT/tech_design/modes/codegen
