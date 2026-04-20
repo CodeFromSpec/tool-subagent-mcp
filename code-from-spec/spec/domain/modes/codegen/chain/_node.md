@@ -1,9 +1,9 @@
 ---
-version: 2
-parent_version: 2
+version: 4
+parent_version: 6
 ---
 
-# ROOT/domain/operations/codegen/chain
+# ROOT/domain/modes/codegen/chain
 
 ## Intent
 
@@ -75,7 +75,6 @@ is silently skipped.
 
 - The chain is read-only. No chain file may be modified.
 - If the target node's frontmatter cannot be read, the chain cannot
-  be built; this is an operational error.
+  be built; this is a runtime error.
 - If the target node is a test node and its parent's frontmatter
-  cannot be read, the chain cannot be built; this is an operational
-  error.
+  cannot be read, the chain cannot be built; this is a runtime error.

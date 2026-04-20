@@ -1,19 +1,19 @@
 ---
-version: 4
-parent_version: 8
+version: 6
+parent_version: 10
 ---
 
-# ROOT/domain/operations/codegen
+# ROOT/domain/modes/codegen
 
 ## Intent
 
-Defines the codegen operation: provides the subagent with the
+Defines the codegen mode: provides the subagent with the
 context it needs to generate code for a spec leaf node, and
 restricts its writes to the node's declared outputs.
 
 ## Context
 
-### The problem this operation solves
+### The problem this mode solves
 
 In Code from Spec, a subagent given unrestricted file access will
 compensate for perceived gaps in its context by exploring the
@@ -22,7 +22,7 @@ framework documentation — rather than stopping to report ambiguity.
 This produces hallucinated or inconsistent output and makes the
 generation process unpredictable.
 
-The codegen operation enforces confinement by design: the subagent
+The codegen mode enforces confinement by design: the subagent
 receives exactly the spec chain for its leaf node, nothing more. If
 that context is insufficient to generate correct code, the only
 available action is to stop and report the problem. Exploration is
@@ -48,8 +48,8 @@ corrupting the project.
 subagent-mcp codegen <target-logical-name>
 ```
 
-`os.Args[2]` is the logical name of the target node — either a leaf
-spec node (`ROOT/...`) or a test node (`TEST/...`).
+The second CLI argument is the logical name of the target node —
+either a leaf spec node (`ROOT/...`) or a test node (`TEST/...`).
 Examples: `ROOT/payments/fees/calculation`,
 `TEST/payments/fees/calculation`.
 
@@ -76,9 +76,9 @@ Examples: `ROOT/payments/fees/calculation`,
 
 ## Constraints
 
-- `os.Args[2]` must be a valid `ROOT/` or `TEST/` logical name.
-  Absent, empty, or invalid values cause the tool to exit 1 with
-  a clear error.
+- The target argument must be a valid `ROOT/` or `TEST/` logical
+  name. Absent, empty, or invalid values cause the tool to exit 1
+  with a clear error.
 - Native Claude Code file tools (Read, Write, Glob) must be withheld
   from the subagent. The MCP config must not grant them.
 
@@ -102,6 +102,6 @@ keeping the cost flat regardless of chain size.
 ### write_file validates against implements
 
 The leaf node's `implements` field is the authoritative list of
-files this operation may produce. Validating every write against it
+files this mode may produce. Validating every write against it
 prevents the subagent from writing to paths outside the declared
 scope, whether by mistake or hallucination.
