@@ -7,8 +7,9 @@ parent_version: 1
 
 ## Intent
 
-Defines the domain model for the MCP server: what a session is,
-what the chain is, and what each tool is responsible for.
+Defines the domain concepts this server depends on: the Code from
+Spec project structure it reads, and the runtime concepts (session,
+operation) that govern its behavior.
 
 ## Context
 
@@ -22,11 +23,10 @@ code (they carry an `implements` field in their frontmatter).
 
 ### Role of this server
 
-The server mediates between the orchestrator and a code generation
-subagent. The orchestrator knows which leaf node to generate; it
-launches the server with that node as configuration. The subagent
-knows only what the server exposes — it has no direct filesystem
-access.
+The server mediates between the orchestrator and a subagent. The
+orchestrator decides which operation to run and with which
+parameters; it launches the server accordingly. The subagent knows
+only what the server exposes — it has no direct filesystem access.
 
 ## Constraints
 
