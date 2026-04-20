@@ -3,7 +3,7 @@ version: 4
 parent_version: 2
 depends_on:
   - path: ROOT/domain/operations
-    version: 7
+    version: 8
   - path: ROOT/tech_design/operations
     version: 2
 implements:

@@ -1,15 +1,15 @@
 ---
-version: 2
-parent_version: 2
+version: 4
+parent_version: 8
 ---
 
 # ROOT/domain/operations/codegen
 
 ## Intent
 
-Defines the codegen operation: generates source files for a single
-Code from Spec leaf node by providing the subagent with exactly the
-context it needs and restricting its writes to declared outputs.
+Defines the codegen operation: provides the subagent with the
+context it needs to generate code for a spec leaf node, and
+restricts its writes to the node's declared outputs.
 
 ## Context
 
@@ -28,6 +28,11 @@ that context is insufficient to generate correct code, the only
 available action is to stop and report the problem. Exploration is
 not possible because the tools to explore do not exist in this
 session.
+
+On the write side, the subagent is restricted to the files declared
+in the node's `implements` list. This prevents hallucinated writes —
+extra files, wrong paths, or unrelated modifications — from
+corrupting the project.
 
 ### Intended workflow
 

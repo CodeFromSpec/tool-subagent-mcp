@@ -1,5 +1,5 @@
 ---
-version: 7
+version: 8
 parent_version: 2
 ---
 
@@ -19,9 +19,13 @@ defines its own set of MCP tools and its own additional arguments.
 
 ### Usage message
 
-When the operation argument is absent, empty, or unrecognized,
-the tool prints a usage message listing all available operations
-and exits 1.
+The tool prints a usage message listing all available operations in
+two cases:
+
+- **Help requested** (`--help`, `-h`, or `help` as the first
+  argument): prints the usage message and exits 0.
+- **Operation absent, empty, or unrecognized**: prints the usage
+  message and exits 1.
 
 ### Extensibility
 
@@ -31,6 +35,4 @@ are unaffected.
 
 ## Constraints
 
-- If the operation argument is absent, empty, or unrecognized,
-  the tool prints a usage message and exits 1.
 - Operation names are lowercase, single words.
