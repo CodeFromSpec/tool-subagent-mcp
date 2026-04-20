@@ -3,12 +3,12 @@ version: 1
 parent_version: 1
 ---
 
-# ROOT/domain/external_dependencies
+# ROOT/domain/codefromspec/external_dependencies
 
 ## Intent
 
 Defines the structure of external dependencies as relevant to this
-server: where they live, how they are identified, and how files
+tool: where they live, how they are identified, and how files
 within them are selected.
 
 ## Contracts

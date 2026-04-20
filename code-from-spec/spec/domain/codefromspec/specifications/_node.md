@@ -3,7 +3,7 @@ version: 1
 parent_version: 1
 ---
 
-# ROOT/domain/specifications
+# ROOT/domain/codefromspec/specifications
 
 ## Intent
 

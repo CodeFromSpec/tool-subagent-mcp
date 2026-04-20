@@ -27,3 +27,6 @@ CLAUDE.local.md
 .golangci.yml
 
 coverage.html
+
+# Runtime tooling (downloaded, not committed)
+tools/
