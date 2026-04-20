@@ -1,0 +1,21 @@
+name: Check PR Title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  check-pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print PR title
+        env:
+          TEXT_TO_PRINT: ${{ github.event.pull_request.title }}
+        run: echo "$TEXT_TO_PRINT"
+
+      - name: Fail if PR title is not semantic-commit compliant
+        if: ${{ (!startsWith(github.event.pull_request.title, 'fix:')) && (!startsWith(github.event.pull_request.title, 'feat:')) && (!startsWith(github.event.pull_request.title, 'feat!:')) && (!startsWith(github.event.pull_request.title, 'chore(main):')) }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.setFailed('PR title must start with one of the following: [fix:], [feat:], or [feat!:]')
