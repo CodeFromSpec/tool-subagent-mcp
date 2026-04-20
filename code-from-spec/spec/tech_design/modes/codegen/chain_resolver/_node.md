@@ -1,18 +1,18 @@
 ---
-version: 3
-parent_version: 2
+version: 6
+parent_version: 4
 depends_on:
-  - path: ROOT/domain/operations/codegen/chain
-    version: 2
+  - path: ROOT/domain/modes/codegen/chain
+    version: 4
   - path: ROOT/tech_design/logical_names
-    version: 3
+    version: 6
   - path: ROOT/tech_design/frontmatter
-    version: 2
+    version: 5
 implements:
-  - cmd/subagent-mcp/operations/codegen/chainresolver.go
+  - cmd/subagent-mcp/modes/codegen/chainresolver.go
 ---
 
-# ROOT/tech_design/operations/codegen/chain_resolver
+# ROOT/tech_design/modes/codegen/chain_resolver
 
 ## Intent
 
@@ -33,7 +33,7 @@ func ResolveChain(leafLogicalName string) ([]ChainEntry, error)
 ```
 
 `ResolveChain` returns the chain entries in the order defined by
-`ROOT/domain/operations/codegen/chain`. Returns an error if the
+`ROOT/domain/modes/codegen/chain`. Returns an error if the
 chain cannot be built (unresolvable path, unreadable frontmatter).
 
 ### Algorithm

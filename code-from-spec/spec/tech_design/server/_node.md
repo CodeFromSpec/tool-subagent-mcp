@@ -1,11 +1,11 @@
 ---
-version: 4
-parent_version: 2
+version: 6
+parent_version: 3
 depends_on:
-  - path: ROOT/domain/operations
-    version: 8
-  - path: ROOT/tech_design/operations
-    version: 2
+  - path: ROOT/domain/modes
+    version: 10
+  - path: ROOT/tech_design/modes
+    version: 4
 implements:
   - cmd/subagent-mcp/main.go
 ---
@@ -14,28 +14,30 @@ implements:
 
 ## Intent
 
-Entry point: reads the operation argument, dispatches to the
-corresponding operation handler, and exits with the appropriate
+Entry point: reads the mode argument, dispatches to the
+corresponding mode handler, and exits with the appropriate
 code.
 
 ## Contracts
 
 ### Startup sequence
 
-1. Read `os.Args[1]` as the operation name. If absent or empty,
+1. Read `os.Args[1]` as the mode name. If absent or empty,
    print a usage message to stderr and exit 1.
-2. Look up the operation by name. If unrecognized, print a usage
-   message listing valid operations and exit 1.
-3. Call `operation.Run(os.Args[2:])`.
-4. If `Run` returns an error, print it to stderr and exit 1.
-5. Otherwise exit 0.
+2. If `os.Args[1]` is `--help`, `-h`, or `help`, print the usage
+   message to stdout and exit 0.
+3. Look up the mode by name. If unrecognized, print a usage
+   message listing valid modes and exit 1.
+4. Call `mode.Run(os.Args[2:])`.
+5. If `Run` returns an error, print it to stderr and exit 1.
+6. Otherwise exit 0.
 
 ### Usage message
 
 ```
-Usage: subagent-mcp <operation> [args...]
+Usage: subagent-mcp <mode> [args...]
 
-Operations:
+Modes:
   codegen <leaf-logical-name>   Generate code for a spec leaf node.
 ```
 
@@ -44,4 +46,4 @@ Operations:
 | Code | Meaning |
 |---|---|
 | 0 | Clean shutdown. |
-| 1 | Startup error or operation error. |
+| 1 | Startup error or mode error. |

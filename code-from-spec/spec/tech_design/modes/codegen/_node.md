@@ -1,16 +1,16 @@
 ---
-version: 2
-parent_version: 2
+version: 4
+parent_version: 4
 depends_on:
-  - path: ROOT/domain/operations/codegen
-    version: 2
+  - path: ROOT/domain/modes/codegen
+    version: 6
 ---
 
-# ROOT/tech_design/operations/codegen
+# ROOT/tech_design/modes/codegen
 
 ## Intent
 
-Technical design for the codegen operation: argument parsing,
+Technical design for the codegen mode: argument parsing,
 session initialization, tool registration, and MCP server startup.
 
 ## Contracts
@@ -18,7 +18,7 @@ session initialization, tool registration, and MCP server startup.
 ### File organization
 
 ```
-cmd/subagent-mcp/operations/codegen/
+cmd/subagent-mcp/modes/codegen/
   codegen.go        ← Run(), Session type, argument parsing
   chainresolver.go  ← chain resolution algorithm
   load_context.go   ← load_context tool handler

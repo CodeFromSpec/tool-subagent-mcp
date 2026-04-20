@@ -1,9 +1,9 @@
 ---
-version: 3
-parent_version: 2
+version: 6
+parent_version: 3
 depends_on:
-  - path: ROOT/domain/operations/codegen/chain
-    version: 2
+  - path: ROOT/domain/modes/codegen/chain
+    version: 4
 implements:
   - cmd/subagent-mcp/logicalnames.go
 ---

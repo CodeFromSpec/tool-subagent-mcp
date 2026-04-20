@@ -1,6 +1,6 @@
 ---
-version: 2
-parent_version: 2
+version: 3
+parent_version: 3
 ---
 
 # ROOT/tech_design
@@ -30,23 +30,25 @@ Go (minimum 1.24).
 
 ### File organization
 
-All source files live in `cmd/subagent-mcp/` under `package main`:
-
 ```
 cmd/subagent-mcp/
-  main.go           ← startup, MCP server init, tool registration
-  logicalnames.go   ← logical name ↔ file path conversions
-  frontmatter.go    ← YAML frontmatter parsing
-  chainresolver.go  ← chain resolution algorithm
-  load_context.go   ← load_context tool handler
-  write_file.go     ← write_file tool handler
+  main.go             ← startup and mode dispatch
+  logicalnames.go     ← logical name ↔ file path conversions
+  frontmatter.go      ← YAML frontmatter parsing
+  modes/
+    codegen/
+      codegen.go      ← Run(), Session type, argument parsing
+      chainresolver.go
+      load_context.go
+      write_file.go
 ```
 
 ### Error handling
 
-- **Startup errors** (missing `CFS_NODE`, unresolvable session node,
-  unreadable leaf frontmatter) — print to stderr and exit non-zero.
-  The tool does not start if the session cannot be established.
+- **Startup errors** (missing or invalid mode argument, unresolvable
+  target node, unreadable leaf frontmatter) — print to stderr and
+  exit 1. The tool does not start if the session cannot be
+  established.
 - **Tool errors** — returned as MCP tool error responses. The tool
   continues running after a tool error.
 - The tool never panics. All errors are handled explicitly.
@@ -57,5 +59,5 @@ cmd/subagent-mcp/
   at startup and passed explicitly to tool handlers.
 - No concurrency beyond what the MCP library manages internally.
   Tool handlers execute serially.
-- No configuration files. All behavior is determined by `CFS_NODE`
+- No configuration files. All behavior is determined by CLI arguments
   and the filesystem.
