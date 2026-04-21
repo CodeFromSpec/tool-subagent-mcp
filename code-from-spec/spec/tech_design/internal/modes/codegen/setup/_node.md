@@ -1,19 +1,19 @@
 ---
-version: 9
-parent_version: 34
+version: 11
+parent_version: 35
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 1
   - path: ROOT/domain/modes/codegen
     version: 21
   - path: ROOT/tech_design/internal/chain_resolver
-    version: 45
+    version: 47
   - path: ROOT/tech_design/internal/frontmatter
-    version: 23
+    version: 24
   - path: ROOT/tech_design/internal/logical_names
-    version: 21
+    version: 22
   - path: ROOT/tech_design/internal/pathvalidation
-    version: 6
+    version: 7
 implements:
   - internal/modes/codegen/setup.go
 ---
@@ -27,6 +27,16 @@ arguments, loads and pre-caches the full spec chain, and registers
 the `load_context` and `write_file` tools on the MCP server.
 
 ## Contracts
+
+### Instructions constant
+
+```go
+const Instructions = "..."
+```
+
+Package-level constant holding the server instructions string defined in the
+parent node. Declared in this file so `main` can reference it via
+`codegen.Instructions` when creating the MCP server.
 
 ### Setup function
 
