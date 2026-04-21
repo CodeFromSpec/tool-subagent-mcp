@@ -1,5 +1,5 @@
 ---
-version: 6
+version: 7
 ---
 
 # ROOT
@@ -40,19 +40,8 @@ independent OS process with its own mode and state.
 
 ## Constraints
 
-- If the mode argument is absent or unrecognized, the server
-  prints a usage message and exits 1.
 - Each mode is responsible for its own argument validation and
   tool registration.
-
-## Preconditions
-
-This tool does not verify spec correctness or staleness. It assumes
-the orchestrator has already run `staleness-check` and confirmed
-that the target node and its dependencies are up to date before
-invoking the subagent. Generating code from a stale spec may
-produce incorrect results — enforcing this precondition is the
-orchestrator's responsibility.
 
 ## Decisions
 

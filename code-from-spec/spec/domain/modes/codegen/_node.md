@@ -1,5 +1,5 @@
 ---
-version: 18
+version: 20
 parent_version: 11
 ---
 
@@ -8,7 +8,7 @@ parent_version: 11
 ## Intent
 
 Defines the codegen mode: provides the subagent with the
-context it needs to generate code for a spec leaf node, and
+context it needs to generate code for a target node, and
 restricts its writes to the node's declared outputs.
 
 ## Context
@@ -23,8 +23,8 @@ hallucinated or inconsistent output and make the code generation
 process unpredictable.
 
 The codegen mode enforces confinement by design: the subagent
-receives exactly the spec chain for its leaf node, nothing more. If
-that context is insufficient to generate correct code, the only
+receives exactly the spec chain for the target node, nothing more.
+If that context is insufficient to generate correct code, the only
 available action is to stop and report the problem. Exploration is
 not possible because the tools to explore do not exist.
 
@@ -51,9 +51,7 @@ spec node (`ROOT/...`) or a test node (`TEST/...`). Examples:
 ### MCP tools exposed
 
 The subagent has access to exactly two tools — no native file
-access. The minimal surface ensures correct behavior by
-construction: the surface area of available actions defines the
-agent's action space.
+access.
 
 #### load_context
 
@@ -81,7 +79,7 @@ Overwrites if the file already exists.
 
 - The target argument must be a logical name that resolves to a
   node with `implements`. Absent, empty, or invalid values cause
-  the tool to exit 1 with a clear error.
+  the tool to report an error and exit.
 - Reads are limited to the chain; writes are limited to `implements`.
 - The validation against `implements` is the security boundary of
   `write_file`. It must not be bypassable.
@@ -89,13 +87,23 @@ Overwrites if the file already exists.
 - If any chain file cannot be read, `load_context` returns an error
   identifying the missing file; it does not return partial results.
 
+## Preconditions
+
+This mode assumes the orchestrator has already run
+`staleness-check` and confirmed that the target node and its
+dependencies are up to date before invoking the subagent.
+Generating code from a stale spec may produce incorrect results —
+enforcing this precondition is the orchestrator's responsibility.
+
 ## Decisions
 
 ### Two tools, minimal surface
 
 `load_context` and `write_file` are the only tools the subagent can
-call. With only these two tools, the correct workflow — load context,
-generate, write — is also the only possible workflow.
+call. The minimal surface ensures correct behavior by construction:
+the surface area of available actions defines the agent's action
+space. With only these two tools, the correct workflow — load
+context, generate, write — is also the only possible workflow.
 
 ### load_context returns everything in one call
 
@@ -106,7 +114,7 @@ minimizing roundtrip overhead.
 
 ### write_file validates against implements
 
-The leaf node's `implements` field is the authoritative list of
+The target node's `implements` field is the authoritative list of
 files this mode may produce. Validating every write against it
 prevents the subagent from writing to paths outside the declared
 scope, whether by mistake or hallucination.

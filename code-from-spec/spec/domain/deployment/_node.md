@@ -1,5 +1,5 @@
 ---
-version: 1
+version: 2
 parent_version: 4
 ---
 
@@ -8,11 +8,13 @@ parent_version: 4
 ## Intent
 
 Describes how the orchestrator is expected to launch and manage
-server instances.
+server instances. This is informational context — it records how
+the tool is intended to be used but does not define contracts that
+drive the implementation.
 
 ## Context
 
-The server is launched by the orchestrator via MCP stdio config:
+The server is launched by the orchestrator via MCP config:
 
 ```json
 {
