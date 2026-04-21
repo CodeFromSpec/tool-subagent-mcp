@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/internal/modes/codegen/tools/write_file@v23
+// spec: ROOT/tech_design/internal/modes/codegen/tools/write_file@v25
 
 // Package codegen implements the codegen mode for the subagent MCP server.
 // This file provides the write_file tool handler, which validates the requested

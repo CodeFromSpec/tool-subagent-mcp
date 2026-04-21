@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/modes/codegen/tools/write_file@v3
+// spec: TEST/tech_design/internal/modes/codegen/tools/write_file@v4
 
 // Package codegen — tests for the write_file tool handler.
 //

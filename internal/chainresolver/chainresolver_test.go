@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/chain_resolver@v7
+// spec: TEST/tech_design/internal/chain_resolver@v8
 
 // Package chainresolver_test exercises ResolveChain against a real (temp)
 // filesystem. Every test constructs the minimal directory tree it needs using

@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/modes/codegen/tools/load_context@v3
+// spec: TEST/tech_design/internal/modes/codegen/tools/load_context@v4
 
 // Package codegen contains tests for the codegen mode tool handlers.
 // This file tests handleLoadContext, which wraps pre-loaded chain content

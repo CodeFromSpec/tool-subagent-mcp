@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/modes/codegen/setup@v4
+// spec: TEST/tech_design/internal/modes/codegen/setup@v6
 
 // Package codegen — tests for the Setup function.
 //

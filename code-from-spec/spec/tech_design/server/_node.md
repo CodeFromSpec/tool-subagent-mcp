@@ -1,15 +1,15 @@
 ---
-version: 23
-parent_version: 11
+version: 25
+parent_version: 12
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 1
   - path: ROOT/domain/modes
     version: 12
   - path: ROOT/tech_design/internal/modes
-    version: 17
+    version: 18
   - path: ROOT/tech_design/internal/modes/codegen
-    version: 34
+    version: 35
 implements:
   - cmd/subagent-mcp/main.go
 ---

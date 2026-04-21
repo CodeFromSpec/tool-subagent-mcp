@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/internal/modes/codegen/tools/load_context@v26
+// spec: ROOT/tech_design/internal/modes/codegen/tools/load_context@v27
 
 // Package codegen implements the codegen mode for the subagent MCP server.
 // This file provides the load_context tool handler, which returns the

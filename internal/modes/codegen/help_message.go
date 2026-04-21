@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/internal/modes/codegen/help_message@v1
+// spec: ROOT/tech_design/internal/modes/codegen/help_message@v2
 
 // Package codegen implements the codegen mode for the subagent-mcp tool.
 // This file exposes the HelpMessage function, which prints usage and MCP

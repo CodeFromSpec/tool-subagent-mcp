@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/internal/frontmatter@v23
+// spec: ROOT/tech_design/internal/frontmatter@v24
 
 // Package frontmatter reads and parses the YAML frontmatter block from spec
 // nodes, test nodes, and external dependency files.

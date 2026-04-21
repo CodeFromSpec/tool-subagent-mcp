@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/modes/codegen/help_message@v1
+// spec: TEST/tech_design/internal/modes/codegen/help_message@v2
 
 // Package codegen — tests for the HelpMessage function.
 //

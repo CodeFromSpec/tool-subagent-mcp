@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/frontmatter@v7
+// spec: TEST/tech_design/internal/frontmatter@v8
 
 // Package frontmatter — tests for ParseFrontmatter.
 //
