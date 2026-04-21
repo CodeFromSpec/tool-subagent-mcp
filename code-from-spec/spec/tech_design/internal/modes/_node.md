@@ -1,6 +1,6 @@
 ---
-version: 14
-parent_version: 6
+version: 17
+parent_version: 7
 ---
 
 # ROOT/tech_design/internal/modes
@@ -28,6 +28,18 @@ The server calls `Setup` after creating the MCP server and
 selecting the mode. `Setup` is responsible for registering
 tools on the server. It does not start or run the server —
 that is the entry point's responsibility.
+
+### Help message convention
+
+Each mode also exposes a `HelpMessage` function:
+
+```go
+func HelpMessage() string
+```
+
+The server calls it and prints the result when the user runs
+`subagent-mcp <mode> --help` (or `-h` or `help`).
+The server handles help detection before calling `Setup`.
 
 ### State sharing via closures
 

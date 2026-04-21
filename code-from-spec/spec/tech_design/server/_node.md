@@ -1,5 +1,5 @@
 ---
-version: 19
+version: 21
 parent_version: 10
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
@@ -37,10 +37,13 @@ code.
 2. If `os.Args[1]` is `--help`, `-h`, or `help`, print the usage
    message to stdout and exit 0.
 3. Match the mode name:
-   - `"codegen"` → create the MCP server via `mcp.NewServer`
-     with `Implementation.Name` = `"subagent-mcp"` and
-     `ServerOptions.Instructions` = `codegen.Instructions`.
-     Call `codegen.Setup(s, os.Args[2:])`.
+   - `"codegen"`:
+     a. If `os.Args[2]` is `--help`, `-h`, or `help`, print
+        `codegen.HelpMessage()` to stdout and exit 0.
+     b. Create the MCP server via `mcp.NewServer` with
+        `Implementation.Name` = `"subagent-mcp"` and
+        `ServerOptions.Instructions` = `codegen.Instructions`.
+     c. Call `codegen.Setup(s, os.Args[2:])`.
    - Unrecognized → print a usage message listing valid modes
      to stderr and exit 1.
 5. If `Setup` returns an error, print it to stderr and exit 1.
@@ -55,6 +58,8 @@ Usage: subagent-mcp <mode> [args...]
 
 Modes:
   codegen <logical-name>   Generate code for a spec or test node.
+
+Run subagent-mcp <mode> --help for mode-specific help.
 ```
 
 ### Exit codes

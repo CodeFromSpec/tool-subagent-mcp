@@ -1,5 +1,5 @@
 ---
-version: 31
+version: 33
 parent_version: 12
 depends_on:
   - path: ROOT/domain/modes/codegen
@@ -76,6 +76,39 @@ path: code-from-spec/external/database/schema.sql
 
 <content of schema.sql>
 <<<END_FILE_550e8400-e29b-41d4-a716-446655440000>>>
+```
+
+### Help message
+
+Exposed as `HelpMessage()`. The server calls it and prints
+the result when the user runs `subagent-mcp codegen --help`.
+
+```
+Usage: subagent-mcp codegen <logical-name>
+
+Starts an MCP server over stdin/stdout that provides tools
+for code generation. The logical name identifies a spec or
+test node that implements source code files.
+
+The server exposes two tools:
+  load_context   Returns the context for code generation.
+  write_file     Writes a generated file to disk.
+
+The subagent should have no other tools available — no file
+read, write, or search capabilities beyond what this server
+provides. This confinement ensures the subagent works only
+from the provided context and writes only to declared outputs.
+
+MCP configuration example:
+  {
+    "mcpServers": {
+      "subagent-mcp": {
+        "type": "stdio",
+        "command": "<path-to-binary>",
+        "args": ["codegen", "<logical-name>"]
+      }
+    }
+  }
 ```
 
 ### Server instructions
