@@ -1,6 +1,6 @@
 ---
-version: 9
-parent_version: 6
+version: 10
+parent_version: 1
 depends_on:
   - path: EXTERNAL/codefromspec
     version: 1
@@ -8,7 +8,7 @@ implements:
   - cmd/subagent-mcp/frontmatter.go
 ---
 
-# ROOT/tech_design/frontmatter
+# ROOT/tech_design/libs/frontmatter
 
 ## Intent
 
