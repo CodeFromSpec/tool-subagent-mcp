@@ -1,13 +1,13 @@
 ---
-version: 36
-parent_version: 3
+version: 41
+parent_version: 5
 depends_on:
   - path: EXTERNAL/codefromspec
     version: 1
-  - path: ROOT/tech_design/internal/logical_names
-    version: 15
   - path: ROOT/tech_design/internal/frontmatter
-    version: 16
+    version: 21
+  - path: ROOT/tech_design/internal/logical_names
+    version: 19
 implements:
   - internal/chainresolver/chainresolver.go
 ---
@@ -18,6 +18,12 @@ implements:
 
 Resolves the ordered list of files that form the chain for a
 given target logical name.
+
+## Context
+
+### Package
+
+`package chainresolver`
 
 ## Contracts
 

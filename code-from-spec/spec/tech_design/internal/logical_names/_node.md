@@ -1,6 +1,6 @@
 ---
-version: 16
-parent_version: 3
+version: 19
+parent_version: 5
 depends_on:
   - path: EXTERNAL/codefromspec
     version: 1
@@ -13,6 +13,12 @@ implements:
 ## Intent
 
 Centralizes conversion between logical names and file paths.
+
+## Context
+
+### Package
+
+`package logicalnames`
 
 ## Contracts
 

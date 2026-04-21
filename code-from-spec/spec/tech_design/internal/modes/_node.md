@@ -1,6 +1,6 @@
 ---
-version: 10
-parent_version: 4
+version: 11
+parent_version: 5
 ---
 
 # ROOT/tech_design/internal/modes
@@ -30,4 +30,11 @@ The server calls `Setup` after creating the MCP server and
 selecting the mode. `Setup` is responsible for registering
 tools on the server. It does not start or run the server —
 that is the entry point's responsibility.
+
+### State sharing via closures
+
+`Setup` builds any state that tool handlers need, then
+registers the handlers as closures that capture that state.
+This avoids global variables and explicit struct methods —
+the handler function closes over the variables it needs.
 

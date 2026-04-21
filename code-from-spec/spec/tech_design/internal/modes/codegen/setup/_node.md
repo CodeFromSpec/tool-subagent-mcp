@@ -1,17 +1,17 @@
 ---
-version: 2
-parent_version: 15
+version: 4
+parent_version: 20
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 1
   - path: ROOT/domain/modes/codegen
     version: 21
   - path: ROOT/tech_design/internal/chain_resolver
-    version: 36
+    version: 41
   - path: ROOT/tech_design/internal/frontmatter
-    version: 18
+    version: 21
   - path: ROOT/tech_design/internal/logical_names
-    version: 16
+    version: 19
 implements:
   - internal/modes/codegen/setup.go
 ---
@@ -50,20 +50,6 @@ func Setup(s *mcp.Server, args []string) error
 6. Build a `Target` struct and register `load_context` and
    `write_file` on the provided server. `load_context` serves
    the pre-loaded content without further I/O.
-
-### Target type
-
-```go
-type Target struct {
-    LogicalName  string
-    FilePath     string
-    Frontmatter  *Frontmatter
-    ChainContent string
-}
-```
-
-`ChainContent` holds the fully concatenated chain loaded during
-`Setup`, ready to be returned by `load_context`.
 
 ### Error handling
 

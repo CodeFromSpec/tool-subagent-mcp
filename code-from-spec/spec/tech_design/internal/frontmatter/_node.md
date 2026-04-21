@@ -1,6 +1,6 @@
 ---
-version: 18
-parent_version: 3
+version: 21
+parent_version: 5
 depends_on:
   - path: EXTERNAL/codefromspec
     version: 1
@@ -18,6 +18,10 @@ Reads and parses the YAML frontmatter from spec nodes, test nodes,
 and external dependency files.
 
 ## Context
+
+### Package
+
+`package frontmatter`
 
 ### YAML dependency
 
