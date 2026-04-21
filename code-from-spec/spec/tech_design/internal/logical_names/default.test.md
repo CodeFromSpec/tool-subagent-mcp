@@ -1,11 +1,11 @@
 ---
-version: 2
-parent_version: 13
+version: 3
+parent_version: 14
 implements:
   - cmd/subagent-mcp/logicalnames_test.go
 ---
 
-# TEST/tech_design/libs/logical_names
+# TEST/tech_design/internal/logical_names
 
 ## Context
 

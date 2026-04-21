@@ -1,11 +1,11 @@
 ---
-version: 1
-parent_version: 30
+version: 2
+parent_version: 31
 implements:
   - cmd/subagent-mcp/chainresolver_test.go
 ---
 
-# TEST/tech_design/libs/chain_resolver
+# TEST/tech_design/internal/chain_resolver
 
 ## Context
 

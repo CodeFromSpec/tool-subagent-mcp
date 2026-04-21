@@ -1,18 +1,18 @@
 ---
-version: 30
-parent_version: 1
+version: 32
+parent_version: 2
 depends_on:
   - path: EXTERNAL/codefromspec
     version: 1
-  - path: ROOT/tech_design/libs/logical_names
-    version: 13
-  - path: ROOT/tech_design/libs/frontmatter
-    version: 13
+  - path: ROOT/tech_design/internal/logical_names
+    version: 14
+  - path: ROOT/tech_design/internal/frontmatter
+    version: 14
 implements:
   - cmd/subagent-mcp/chainresolver.go
 ---
 
-# ROOT/tech_design/libs/chain_resolver
+# ROOT/tech_design/internal/chain_resolver
 
 ## Intent
 

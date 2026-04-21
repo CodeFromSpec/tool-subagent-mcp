@@ -1,6 +1,6 @@
 ---
-version: 13
-parent_version: 1
+version: 14
+parent_version: 2
 depends_on:
   - path: EXTERNAL/codefromspec
     version: 1
@@ -8,7 +8,7 @@ implements:
   - cmd/subagent-mcp/logicalnames.go
 ---
 
-# ROOT/tech_design/libs/logical_names
+# ROOT/tech_design/internal/logical_names
 
 ## Intent
 

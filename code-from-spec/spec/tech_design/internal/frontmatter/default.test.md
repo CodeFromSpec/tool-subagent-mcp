@@ -1,11 +1,11 @@
 ---
-version: 1
-parent_version: 13
+version: 2
+parent_version: 14
 implements:
   - cmd/subagent-mcp/frontmatter_test.go
 ---
 
-# TEST/tech_design/libs/frontmatter
+# TEST/tech_design/internal/frontmatter
 
 ## Context
 
