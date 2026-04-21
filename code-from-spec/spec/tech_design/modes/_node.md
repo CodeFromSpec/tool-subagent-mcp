@@ -1,5 +1,5 @@
 ---
-version: 6
+version: 8
 parent_version: 6
 ---
 
@@ -29,9 +29,3 @@ The server calls `Run` after selecting the mode. `Run` is
 responsible for registering tools, starting the MCP server, and
 blocking until the client disconnects.
 
-## Constraints
-
-- Each mode is implemented in its own subdirectory under
-  `cmd/subagent-mcp/modes/`.
-- Modes do not share state. All state is initialized within
-  `Run` and passed explicitly to tool handlers.

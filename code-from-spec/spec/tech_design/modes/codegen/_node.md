@@ -1,6 +1,6 @@
 ---
-version: 8
-parent_version: 6
+version: 12
+parent_version: 8
 depends_on:
   - path: ROOT/domain/modes/codegen
     version: 21
@@ -11,21 +11,9 @@ depends_on:
 ## Intent
 
 Technical design for the codegen mode: argument parsing,
-session initialization, tool registration, and MCP server startup.
+tool registration, and MCP server startup.
 
 ## Contracts
-
-### File organization
-
-```
-cmd/subagent-mcp/modes/codegen/
-  codegen.go        ← Run(), Session type, argument parsing
-  chainresolver.go  ← chain resolution algorithm
-  load_context.go   ← load_context tool handler
-  write_file.go     ← write_file tool handler
-```
-
-All files under `package codegen`.
 
 ### Run function
 
@@ -33,22 +21,22 @@ All files under `package codegen`.
 func Run(args []string) error
 ```
 
-1. Validate `args[0]` is present and non-empty (the leaf logical
+1. Validate `args` has exactly one element (the target logical
    name). If not, return a usage error.
-2. Validate the logical name starts with `ROOT`. If not, return
-   an error.
+2. Call `PathFromLogicalName` to resolve the file path. If it
+   returns false, return `"invalid logical name: <name>"`.
 3. Call `ParseFrontmatter` on the resolved file path.
-4. Build a `Session` and register `load_context` and `write_file`
-   with the MCP server.
+4. Build a `Target` struct and register `load_context` and
+   `write_file` with the MCP server.
 5. Start the stdio server and block until the client disconnects.
 
-### Session type
+### Target type
 
 ```go
-type Session struct {
-    LeafLogicalName string
-    LeafFilePath    string
-    LeafFrontmatter *Frontmatter
+type Target struct {
+    LogicalName string
+    FilePath    string
+    Frontmatter *Frontmatter
 }
 ```
 
