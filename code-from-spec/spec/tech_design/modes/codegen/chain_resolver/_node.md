@@ -1,5 +1,5 @@
 ---
-version: 11
+version: 12
 parent_version: 8
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -7,7 +7,7 @@ depends_on:
   - path: ROOT/tech_design/libs/logical_names
     version: 13
   - path: ROOT/tech_design/libs/frontmatter
-    version: 10
+    version: 13
 implements:
   - cmd/subagent-mcp/modes/codegen/chainresolver.go
 ---

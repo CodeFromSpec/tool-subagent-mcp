@@ -1,5 +1,5 @@
 ---
-version: 10
+version: 13
 parent_version: 1
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -12,8 +12,8 @@ implements:
 
 ## Intent
 
-Reads and parses the YAML frontmatter from spec node files and
-external dependency files.
+Reads and parses the YAML frontmatter from spec nodes, test nodes,
+and external dependency files.
 
 ## Contracts
 
@@ -25,14 +25,12 @@ second `---` at the top of the file. Everything after the second
 
 Fields extracted:
 
-- `version` (pointer to integer, nil if absent)
 - `depends_on` (list of objects; see below)
 - `implements` (list of strings)
 
-`parent_version` is present in spec files but is not needed by this
-server — it is ignored.
-
-Unknown fields are ignored.
+All fields are optional at the parsing level — validation
+of required fields happens elsewhere. Unknown fields are
+ignored.
 
 ### DependsOn structure
 
@@ -40,40 +38,18 @@ Each `depends_on` entry has:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `path` | string | yes | Logical name of the dependency. |
-| `version` | int | yes | Expected version. |
+| `logical_name` | string | yes | Logical name of the dependency. |
 | `filter` | []string | no | Glob patterns for file selection within an external dep folder. |
-
-Example frontmatter with an external dep with filter:
-
-```yaml
----
-version: 3
-depends_on:
-  - path: ROOT/architecture/config
-    version: 2
-  - path: EXTERNAL/celcoin-api
-    version: 5
-    filter:
-      - "endpoints/*.md"
-      - "types.md"
-implements:
-  - internal/payments/processor.go
-  - internal/payments/processor_test.go
----
-```
 
 ### Interface
 
 ```go
 type DependsOn struct {
-    Path    string
-    Version int
-    Filter  []string
+    LogicalName string
+    Filter      []string
 }
 
 type Frontmatter struct {
-    Version    *int
     DependsOn  []DependsOn
     Implements []string
 }
