@@ -1,5 +1,5 @@
 ---
-version: 22
+version: 23
 parent_version: 11
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
@@ -38,18 +38,19 @@ code.
    message to stdout and exit 0.
 3. Match the mode name:
    - `"codegen"`:
-     a. If `os.Args[2]` is `--help`, `-h`, or `help`, print
-        `codegen.HelpMessage()` to stdout and exit 0.
+     a. If `len(os.Args) > 2` and `os.Args[2]` is `--help`,
+        `-h`, or `help`, print `codegen.HelpMessage()` to
+        stdout and exit 0.
      b. Create the MCP server via `mcp.NewServer` with
         `Implementation.Name` = `"subagent-mcp"` and
         `ServerOptions.Instructions` = `codegen.Instructions`.
      c. Call `codegen.Setup(s, os.Args[2:])`.
    - Unrecognized → print a usage message listing valid modes
      to stderr and exit 1.
-5. If `Setup` returns an error, print it to stderr and exit 1.
-6. Call `s.Run(context.Background(), &mcp.StdioTransport{})`.
-7. If `Run` returns an error, print it to stderr and exit 1.
-8. Otherwise exit 0.
+4. If `Setup` returns an error, print it to stderr and exit 1.
+5. Call `s.Run(context.Background(), &mcp.StdioTransport{})`.
+6. If `Run` returns an error, print it to stderr and exit 1.
+7. Otherwise exit 0.
 
 ### Usage message
 

@@ -1,6 +1,6 @@
 ---
-version: 2
-parent_version: 22
+version: 3
+parent_version: 23
 implements:
   - cmd/subagent-mcp/main_test.go
 ---
@@ -34,6 +34,12 @@ Expect: exit 0, stdout contains the usage message.
 Run the binary with `-h`.
 
 Expect: exit 0, stdout contains the usage message.
+
+### Codegen help flag prints mode help to stdout
+
+Run the binary with `codegen --help`.
+
+Expect: exit 0, stdout contains the codegen help message.
 
 ### Codegen mode sets correct server instructions
 
