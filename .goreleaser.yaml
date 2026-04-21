@@ -25,6 +25,8 @@ archives:
       - goos: windows
         formats:
           - zip
+    files:
+      - LICENSE
 
 checksum:
   name_template: checksums.txt
