@@ -22,6 +22,19 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Generate THIRD_PARTY_LICENSES
+        run: |
+          go install github.com/google/go-licenses@latest
+          go-licenses save ./... --save_path=.third_party --force
+          find .third_party -type f | sort | while read f; do
+            lib="${f#.third_party/}"
+            printf '=%.0s' {1..72} && echo
+            echo "Library: $lib"
+            printf '=%.0s' {1..72} && echo
+            cat "$f"
+            echo
+          done > THIRD_PARTY_LICENSES
+
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"

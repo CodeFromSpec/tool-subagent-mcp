@@ -27,6 +27,7 @@ archives:
           - zip
     files:
       - LICENSE
+      - THIRD_PARTY_LICENSES
 
 checksum:
   name_template: checksums.txt
