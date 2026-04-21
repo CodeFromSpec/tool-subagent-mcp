@@ -1,5 +1,5 @@
 ---
-version: 2
+version: 3
 parent_version: 8
 implements:
   - internal/modes/codegen/setup_test.go
@@ -26,7 +26,8 @@ Create a spec tree with `ROOT` and `ROOT/a` (leaf with
 `args = ["ROOT/a"]`.
 
 Expect: no error. Server has `load_context` and `write_file`
-tools registered.
+tools registered with the correct names and descriptions as
+defined in the parent codegen node.
 
 ### Valid TEST/ node
 
