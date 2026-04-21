@@ -1,19 +1,19 @@
 ---
-version: 8
-parent_version: 30
+version: 9
+parent_version: 34
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 1
   - path: ROOT/domain/modes/codegen
     version: 21
   - path: ROOT/tech_design/internal/chain_resolver
-    version: 43
+    version: 45
   - path: ROOT/tech_design/internal/frontmatter
-    version: 22
+    version: 23
   - path: ROOT/tech_design/internal/logical_names
-    version: 20
+    version: 21
   - path: ROOT/tech_design/internal/pathvalidation
-    version: 5
+    version: 6
 implements:
   - internal/modes/codegen/setup.go
 ---

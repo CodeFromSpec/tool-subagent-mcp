@@ -1,13 +1,13 @@
 ---
-version: 43
-parent_version: 6
+version: 45
+parent_version: 7
 depends_on:
   - path: EXTERNAL/codefromspec
     version: 1
   - path: ROOT/tech_design/internal/frontmatter
-    version: 22
+    version: 23
   - path: ROOT/tech_design/internal/logical_names
-    version: 20
+    version: 21
 implements:
   - internal/chainresolver/chainresolver.go
 ---
