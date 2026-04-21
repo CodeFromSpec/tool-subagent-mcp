@@ -21,7 +21,9 @@ Before working on this project, read the framework documentation:
 
 Before running staleness checks:
 
-1. Verify that `tools/` is present in `.gitignore`. If it is not, add it.
+1. Verify that `/tools/` is present in `.gitignore`. If it is not, add it.
+   Use the leading `/` to match only the root `tools/` directory — a bare
+   `tools/` would also ignore `tools/` directories nested inside the spec tree.
 2. Verify that `tools/staleness-check` (or `tools/staleness-check.exe` on
    Windows) exists. If it does not, download the latest release for your
    platform:

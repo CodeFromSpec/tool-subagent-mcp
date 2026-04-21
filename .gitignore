@@ -29,6 +29,6 @@ CLAUDE.local.md
 coverage.html
 
 # Runtime tooling (downloaded, not committed)
-tools/
+/tools/
 
 todo.md
