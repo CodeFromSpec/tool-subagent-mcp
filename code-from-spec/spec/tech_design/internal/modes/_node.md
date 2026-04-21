@@ -1,9 +1,9 @@
 ---
-version: 9
-parent_version: 9
+version: 10
+parent_version: 4
 ---
 
-# ROOT/tech_design/modes
+# ROOT/tech_design/internal/modes
 
 ## Intent
 

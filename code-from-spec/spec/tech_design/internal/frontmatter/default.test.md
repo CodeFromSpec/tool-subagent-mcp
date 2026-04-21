@@ -1,8 +1,8 @@
 ---
-version: 3
-parent_version: 16
+version: 4
+parent_version: 17
 implements:
-  - cmd/subagent-mcp/frontmatter_test.go
+  - internal/frontmatter/frontmatter_test.go
 ---
 
 # TEST/tech_design/internal/frontmatter

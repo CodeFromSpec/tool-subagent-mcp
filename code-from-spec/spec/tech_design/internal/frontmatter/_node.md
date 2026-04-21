@@ -1,11 +1,13 @@
 ---
-version: 16
+version: 18
 parent_version: 3
 depends_on:
   - path: EXTERNAL/codefromspec
     version: 1
+  - path: EXTERNAL/goccy-go-yaml
+    version: 1
 implements:
-  - cmd/subagent-mcp/frontmatter.go
+  - internal/frontmatter/frontmatter.go
 ---
 
 # ROOT/tech_design/internal/frontmatter

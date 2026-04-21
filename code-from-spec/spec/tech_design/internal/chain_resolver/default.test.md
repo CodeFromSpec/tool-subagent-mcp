@@ -1,8 +1,8 @@
 ---
-version: 3
-parent_version: 35
+version: 4
+parent_version: 36
 implements:
-  - cmd/subagent-mcp/chainresolver_test.go
+  - internal/chainresolver/chainresolver_test.go
 ---
 
 # TEST/tech_design/internal/chain_resolver

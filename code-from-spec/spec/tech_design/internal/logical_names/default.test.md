@@ -1,8 +1,8 @@
 ---
-version: 4
-parent_version: 15
+version: 5
+parent_version: 16
 implements:
-  - cmd/subagent-mcp/logicalnames_test.go
+  - internal/logicalnames/logicalnames_test.go
 ---
 
 # TEST/tech_design/internal/logical_names
