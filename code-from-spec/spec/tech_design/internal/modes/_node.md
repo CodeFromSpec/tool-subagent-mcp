@@ -1,5 +1,5 @@
 ---
-version: 12
+version: 14
 parent_version: 6
 ---
 
@@ -12,14 +12,12 @@ and individual modes.
 
 ## Contracts
 
-### Mode interface
+### Setup function convention
 
-Each mode implements the following interface:
+Each mode exposes a `Setup` function:
 
 ```go
-type Mode interface {
-    Setup(s *mcp.Server, args []string) error
-}
+func Setup(s *mcp.Server, args []string) error
 ```
 
 `s` is the MCP server instance created by the server entry point.
