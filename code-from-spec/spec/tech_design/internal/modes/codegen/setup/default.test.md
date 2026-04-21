@@ -1,5 +1,5 @@
 ---
-version: 1
+version: 2
 parent_version: 8
 implements:
   - internal/modes/codegen/setup_test.go
@@ -65,13 +65,12 @@ Call `Setup` with `args = ["EXTERNAL/something"]`.
 
 Expect: error containing `"ROOT/ or TEST/"`.
 
-### Unresolvable logical name
+### Nonexistent spec file
 
 Call `Setup` with `args = ["ROOT/nonexistent"]`.
 Do not create the corresponding spec file.
 
-Expect: error containing `"invalid logical name"` or
-a frontmatter parse error.
+Expect: error from `ParseFrontmatter` (file not found).
 
 ### No implements
 
