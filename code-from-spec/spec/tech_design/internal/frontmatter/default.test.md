@@ -1,6 +1,6 @@
 ---
-version: 2
-parent_version: 14
+version: 3
+parent_version: 16
 implements:
   - cmd/subagent-mcp/frontmatter_test.go
 ---

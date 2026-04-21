@@ -1,5 +1,5 @@
 ---
-version: 6
+version: 9
 parent_version: 7
 ---
 
@@ -17,9 +17,9 @@ Go (minimum 1.24).
 
 ### Dependencies
 
-- `github.com/mark3labs/mcp-go` — MCP server implementation
-  (stdio transport, tool registration, request handling).
-- `gopkg.in/yaml.v3` — YAML frontmatter parsing.
+- `github.com/modelcontextprotocol/go-sdk` — Official MCP SDK
+  (stdio transport, tool registration with generics, request
+  handling).
 - Standard library for everything else.
 
 ### Error handling

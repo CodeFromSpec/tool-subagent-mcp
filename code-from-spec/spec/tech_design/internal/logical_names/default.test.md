@@ -1,6 +1,6 @@
 ---
-version: 3
-parent_version: 14
+version: 4
+parent_version: 15
 implements:
   - cmd/subagent-mcp/logicalnames_test.go
 ---

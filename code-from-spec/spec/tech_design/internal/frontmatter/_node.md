@@ -1,6 +1,6 @@
 ---
-version: 14
-parent_version: 2
+version: 16
+parent_version: 3
 depends_on:
   - path: EXTERNAL/codefromspec
     version: 1
@@ -14,6 +14,12 @@ implements:
 
 Reads and parses the YAML frontmatter from spec nodes, test nodes,
 and external dependency files.
+
+## Context
+
+### YAML dependency
+
+Uses `github.com/goccy/go-yaml` for YAML parsing.
 
 ## Contracts
 

@@ -1,6 +1,6 @@
 ---
-version: 12
-parent_version: 8
+version: 13
+parent_version: 9
 depends_on:
   - path: ROOT/domain/modes/codegen
     version: 21
@@ -15,10 +15,10 @@ tool registration, and MCP server startup.
 
 ## Contracts
 
-### Run function
+### Setup function
 
 ```go
-func Run(args []string) error
+func Setup(s *mcp.Server, args []string) error
 ```
 
 1. Validate `args` has exactly one element (the target logical
@@ -27,8 +27,7 @@ func Run(args []string) error
    returns false, return `"invalid logical name: <name>"`.
 3. Call `ParseFrontmatter` on the resolved file path.
 4. Build a `Target` struct and register `load_context` and
-   `write_file` with the MCP server.
-5. Start the stdio server and block until the client disconnects.
+   `write_file` on the provided server.
 
 ### Target type
 

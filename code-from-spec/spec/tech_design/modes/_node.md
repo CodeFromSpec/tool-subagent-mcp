@@ -1,6 +1,6 @@
 ---
-version: 8
-parent_version: 6
+version: 9
+parent_version: 9
 ---
 
 # ROOT/tech_design/modes
@@ -18,14 +18,16 @@ Each mode implements the following interface:
 
 ```go
 type Mode interface {
-    Run(args []string) error
+    Setup(s *mcp.Server, args []string) error
 }
 ```
 
+`s` is the MCP server instance created by the server entry point.
 `args` contains `os.Args[2:]` — the arguments after the mode
 name. Each mode parses and validates its own args.
 
-The server calls `Run` after selecting the mode. `Run` is
-responsible for registering tools, starting the MCP server, and
-blocking until the client disconnects.
+The server calls `Setup` after creating the MCP server and
+selecting the mode. `Setup` is responsible for registering
+tools on the server. It does not start or run the server —
+that is the entry point's responsibility.
 

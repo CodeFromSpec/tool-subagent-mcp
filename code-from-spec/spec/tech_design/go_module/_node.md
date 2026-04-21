@@ -1,6 +1,6 @@
 ---
-version: 6
-parent_version: 6
+version: 7
+parent_version: 9
 ---
 
 # ROOT/tech_design/go_module
