@@ -1,6 +1,6 @@
 ---
-version: 7
-parent_version: 45
+version: 8
+parent_version: 47
 implements:
   - internal/chainresolver/chainresolver_test.go
 ---

@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/server@v3
+// spec: TEST/tech_design/server@v8
 
 // Package main — integration tests for the subagent-mcp binary.
 //
@@ -17,11 +17,11 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -29,7 +29,8 @@ import (
 	// Instructions constant in the MCP initialize response test.
 	// This avoids hard-coding the instructions string in two places.
 	// Use the same module path as main.go to stay consistent.
-	"github.com/gustavo-neto/tool-subagent-mcp/internal/modes/codegen"
+	"github.com/CodeFromSpec/tool-subagent-mcp/internal/modes/codegen"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // binaryPath holds the path to the compiled binary, built once in TestMain.
@@ -48,7 +49,16 @@ func TestMain(m *testing.M) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	binaryPath = filepath.Join(tmpDir, "subagent-mcp")
+	// On Windows, Go toolchain produces executables with the .exe extension.
+	// Omitting it causes the binary to not be found when invoked via exec.Command.
+	// Spec ref: TEST/tech_design/server § Context — "On Windows, the binary name
+	// must include the `.exe` extension: use `runtime.GOOS == "windows"` to detect
+	// the platform and append `.exe` to the output path when building."
+	binaryName := "subagent-mcp"
+	if runtime.GOOS == "windows" {
+		binaryName += ".exe"
+	}
+	binaryPath = filepath.Join(tmpDir, binaryName)
 
 	// Resolve the package directory relative to this test file.
 	// The test file lives in cmd/subagent-mcp/, so "." refers to that package.
@@ -172,15 +182,8 @@ func TestCodegenHelpFlag_PrintsModeHelpToStdout(t *testing.T) {
 // when the binary is launched in codegen mode, the MCP server's initialize
 // response contains instructions that match codegen.Instructions.
 //
-// The test acts as a minimal MCP client over stdio:
-//  1. Start the binary with a known logical name argument.
-//  2. Send a JSON-RPC 2.0 "initialize" request over stdin.
-//  3. Read the response from stdout.
-//  4. Assert that result.instructions == codegen.Instructions.
-//
-// A real logical name that exists in the project must be used so Setup does
-// not exit early with an error. We use the root node "ROOT" which always
-// exists in any Code from Spec project.
+// The test uses mcp.Client with mcp.CommandTransport to connect to the server
+// binary over stdio, performing the full MCP initialize handshake.
 //
 // Spec ref: TEST/tech_design/server § "Codegen mode sets correct server instructions"
 func TestCodegenMode_ServerInstructionsMatchCodegenInstructions(t *testing.T) {
@@ -189,118 +192,46 @@ func TestCodegenMode_ServerInstructionsMatchCodegenInstructions(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10_000_000_000) // 10s
 	defer cancel()
 
-	// "ROOT" is the top-level spec node (code-from-spec/spec/_node.md).
-	// It always exists and has no implements list requirement for this test
-	// because we only need the server to start successfully — we disconnect
-	// immediately after receiving the initialize response.
-	//
-	// NOTE: if ROOT has no implements list, Setup will return an error and
-	// the test will fail. In that case, use any leaf node logical name that
-	// exists in the project and has at least one file in its implements list.
-	// The test records the logical name in the error message for easy diagnosis.
 	logicalName := "TEST/tech_design/server"
 
-	cmd := exec.CommandContext(ctx, binaryPath, "codegen", logicalName)
-
-	var outBuf bytes.Buffer
-	cmd.Stdout = &outBuf
-	cmd.Stderr = os.Stderr // let setup errors surface in test output
-
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		t.Fatalf("failed to open stdin pipe: %v", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("failed to start binary: %v", err)
-	}
-
-	// Send MCP initialize request (JSON-RPC 2.0 over stdio, newline-delimited).
-	// The MCP SDK expects each message as a JSON object followed by a newline.
+	// Derive project root by walking up two levels from the package directory.
+	// go test sets cwd to the package directory (cmd/subagent-mcp/), so walking
+	// up two levels reaches the project root.
 	//
-	// Spec ref: EXTERNAL/mcp-go-sdk — the server speaks JSON-RPC 2.0 over stdio.
-	initRequest := map[string]any{
-		"jsonrpc": "2.0",
-		"id":      1,
-		"method":  "initialize",
-		"params": map[string]any{
-			"protocolVersion": "2024-11-05",
-			"capabilities":    map[string]any{},
-			"clientInfo": map[string]any{
-				"name":    "test-client",
-				"version": "0.0.1",
-			},
-		},
-	}
-
-	reqBytes, err := json.Marshal(initRequest)
+	// Spec ref: TEST/tech_design/server § Context — "Derive the project root from
+	// os.Getwd() and walking up two directory levels. Set cmd.Dir to this project
+	// root for any subprocess that needs access to spec files."
+	wd, err := os.Getwd()
 	if err != nil {
-		t.Fatalf("failed to marshal initialize request: %v", err)
+		t.Fatalf("failed to get working directory: %v", err)
 	}
+	projectRoot := filepath.Join(wd, "..", "..")
 
-	// Write the request then close stdin so the server sees EOF and can stop
-	// waiting for more input. The server will process initialize and write its
-	// response before the stdin EOF causes it to exit.
-	if _, err := fmt.Fprintf(stdin, "%s\n", reqBytes); err != nil {
-		t.Fatalf("failed to write initialize request: %v", err)
+	cmd := exec.CommandContext(ctx, binaryPath, "codegen", logicalName)
+	cmd.Dir = projectRoot
+
+	transport := &mcp.CommandTransport{Command: cmd}
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.1"}, nil)
+
+	// Connect performs the MCP initialize handshake and starts the subprocess.
+	// Do NOT call cmd.Start() manually — CommandTransport handles process startup.
+	cs, err := client.Connect(ctx, transport, nil)
+	if err != nil {
+		t.Fatalf("client.Connect failed: %v", err)
 	}
-	stdin.Close()
+	defer cs.Close()
 
-	// Wait for the process to finish (it will exit after stdin EOF).
-	// Ignore the exit error — a non-zero exit is acceptable here because
-	// the server may exit 1 after the transport closes, which is an
-	// implementation detail, not a test failure.
-	_ = cmd.Wait()
-
-	// Parse the server's stdout. The MCP server writes one JSON object per
-	// line; we look for a line that contains the initialize response.
-	responseLines := strings.Split(outBuf.String(), "\n")
-
-	var initResponse struct {
-		ID     int `json:"id"`
-		Result struct {
-			ServerInfo struct {
-				Name string `json:"name"`
-			} `json:"serverInfo"`
-			Instructions string `json:"instructions"`
-		} `json:"result"`
-	}
-
-	found := false
-	for _, line := range responseLines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if err := json.Unmarshal([]byte(line), &initResponse); err != nil {
-			// Not a JSON object we recognize — skip.
-			continue
-		}
-		// Identify the initialize response by its ID matching our request.
-		if initResponse.ID == 1 {
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		t.Fatalf(
-			"did not receive an initialize response (id=1) from the server\n"+
-				"logical name: %s\nraw stdout:\n%s",
-			logicalName, outBuf.String(),
-		)
-	}
-
-	// The core assertion: instructions must match codegen.Instructions exactly.
-	// This ensures the server creates the MCP server with the correct options.
+	// Assert that the server's initialize response instructions match the
+	// codegen package's Instructions constant exactly.
 	//
 	// Spec ref: ROOT/tech_design/server § "Startup sequence" step 3b:
 	// "ServerOptions.Instructions = codegen.Instructions"
-	if initResponse.Result.Instructions != codegen.Instructions {
+	if cs.InitializeResult().Instructions != codegen.Instructions {
 		t.Errorf(
 			"initialize response instructions mismatch\nwant:\n%s\ngot:\n%s",
 			codegen.Instructions,
-			initResponse.Result.Instructions,
+			cs.InitializeResult().Instructions,
 		)
 	}
 }

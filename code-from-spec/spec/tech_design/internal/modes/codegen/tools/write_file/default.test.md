@@ -1,6 +1,6 @@
 ---
-version: 3
-parent_version: 23
+version: 4
+parent_version: 25
 implements:
   - internal/modes/codegen/write_file_test.go
 ---

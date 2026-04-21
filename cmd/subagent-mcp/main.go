@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/server@v23
+// spec: ROOT/tech_design/server@v25
 
 // Package main is the entry point for the subagent-mcp binary.
 //
@@ -25,7 +25,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/gustavo-neto/tool-subagent-mcp/internal/modes/codegen"
+	"github.com/CodeFromSpec/tool-subagent-mcp/internal/modes/codegen"
 )
 
 // usageMessage is the top-level help text printed when no mode is given,

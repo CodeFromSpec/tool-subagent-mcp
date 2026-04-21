@@ -1,13 +1,13 @@
 ---
-version: 23
-parent_version: 16
+version: 25
+parent_version: 17
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 1
   - path: ROOT/domain/modes/codegen
     version: 21
   - path: ROOT/tech_design/internal/pathvalidation
-    version: 6
+    version: 7
 implements:
   - internal/modes/codegen/write_file.go
 ---

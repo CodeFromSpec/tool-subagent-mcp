@@ -1,11 +1,11 @@
 ---
-version: 34
-parent_version: 17
+version: 35
+parent_version: 18
 depends_on:
   - path: ROOT/domain/modes/codegen
     version: 21
   - path: ROOT/tech_design/internal/pathvalidation
-    version: 6
+    version: 7
 ---
 
 # ROOT/tech_design/internal/modes/codegen
