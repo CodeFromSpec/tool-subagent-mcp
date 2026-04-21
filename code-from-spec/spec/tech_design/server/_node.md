@@ -1,11 +1,11 @@
 ---
-version: 7
-parent_version: 4
+version: 8
+parent_version: 6
 depends_on:
   - path: ROOT/domain/modes
-    version: 11
+    version: 12
   - path: ROOT/tech_design/modes
-    version: 5
+    version: 6
 implements:
   - cmd/subagent-mcp/main.go
 ---

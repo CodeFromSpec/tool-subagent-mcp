@@ -1,6 +1,6 @@
 ---
-version: 5
-parent_version: 4
+version: 6
+parent_version: 6
 ---
 
 # ROOT/tech_design/modes

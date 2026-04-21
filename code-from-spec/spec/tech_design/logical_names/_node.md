@@ -1,6 +1,6 @@
 ---
-version: 9
-parent_version: 4
+version: 12
+parent_version: 6
 depends_on:
   - path: EXTERNAL/codefromspec
     version: 1
@@ -12,14 +12,7 @@ implements:
 
 ## Intent
 
-Centralizes conversion between logical names and file paths. Used
-by chain resolution and write_file validation.
-
-## Context
-
-This tool deals with two namespaces: `ROOT/` for spec nodes and
-`EXTERNAL/` for external dependencies. Test nodes (`TEST/`) are not
-part of the chain and are not handled here.
+Centralizes conversion between logical names and file paths.
 
 ## Contracts
 
@@ -27,55 +20,83 @@ part of the chain and are not handled here.
 
 ```go
 func PathFromLogicalName(logicalName string) (string, bool)
-func HasParent(logicalName string) bool
+func HasParent(logicalName string) (hasParent, ok bool)
 func ParentLogicalName(logicalName string) (string, bool)
 ```
 
 ### PathFromLogicalName
 
-Resolves a logical name to a file path relative to the project root.
+Resolves a logical name to a file path relative to the
+project root.
 
 | Logical name | File path |
 |---|---|
 | `ROOT` | `code-from-spec/spec/_node.md` |
-| `ROOT/x` | `code-from-spec/spec/x/_node.md` |
 | `ROOT/x/y` | `code-from-spec/spec/x/y/_node.md` |
+| `TEST` | `code-from-spec/spec/default.test.md` |
+| `TEST/x` | `code-from-spec/spec/x/default.test.md` |
+| `TEST/x(name)` | `code-from-spec/spec/x/name.test.md` |
 | `EXTERNAL/x` | `code-from-spec/external/x/_external.md` |
 
-Returns `(path, true)` on success, `("", false)` if the input does
-not match any known pattern.
+Rules:
+- `ROOT` → `code-from-spec/spec/_node.md`
+- `ROOT/<path>` → `code-from-spec/spec/<path>/_node.md`
+- `TEST` → `code-from-spec/spec/default.test.md`
+- `TEST/<path>` → `code-from-spec/spec/<path>/default.test.md`
+- `TEST/<path>(<name>)` → `code-from-spec/spec/<path>/<name>.test.md`
+- `EXTERNAL/<name>` → `code-from-spec/external/<name>/_external.md`
 
 ### HasParent
 
-Determines whether a logical name has a parent in the ancestor chain.
+Determines whether a logical name has a parent node.
+Returns `(hasParent, ok)` where `ok` indicates whether
+the input is a valid logical name.
 
-| Logical name | Result |
-|---|---|
-| `ROOT` | `false` |
-| `ROOT/x` | `true` |
-| `ROOT/x/y` | `true` |
-| `EXTERNAL/x` | `false` |
+| Logical name | hasParent | ok |
+|---|---|---|
+| `ROOT` | `false` | `true` |
+| `ROOT/x` | `true` | `true` |
+| `TEST` | `true` | `true` |
+| `TEST/x` | `true` | `true` |
+| `TEST/x(name)` | `true` | `true` |
+| `EXTERNAL/x` | `false` | `true` |
+| `EXTERNAL` | `false` | `false` |
+| `""` | `false` | `false` |
 
-Returns `false` for any input that is not a valid logical name.
+Rules:
+- `ROOT` → no parent
+- `ROOT/<path>` → has parent
+- `TEST` and `TEST/<path>` and `TEST/<path>(<name>)` →
+  has parent (parent is always in the ROOT namespace)
+- `EXTERNAL/<name>` → no parent
+- Anything else → not a valid logical name
 
 ### ParentLogicalName
 
-Derives the parent's logical name. Only call after confirming
+Derives the parent's logical name from a node's logical
+name. Returns `(parent, true)` on success, `("", false)`
+if the node has no parent. Only call after confirming
 `HasParent` returns `true`.
 
 | Logical name | Parent |
 |---|---|
 | `ROOT/x` | `ROOT` |
 | `ROOT/x/y` | `ROOT/x` |
-| `ROOT/x/y/z` | `ROOT/x/y` |
+| `TEST` | `ROOT` |
+| `TEST/x` | `ROOT/x` |
+| `TEST/x(name)` | `ROOT/x` |
 
 Rules:
-- `ROOT/<path>` → strip last `/`-separated segment. If no segment
-  remains, parent is `ROOT`.
-
-Returns `(parent, true)` on success, `("", false)` if the node has
-no parent or the input is invalid.
+- `ROOT/<path>` → strip last segment. If only one
+  segment remains, parent is `ROOT`.
+- `TEST` → `ROOT`
+- `TEST/<path>` → `ROOT/<path>`
+- `TEST/<path>(<name>)` → `ROOT/<path>`
 
 ### Error handling
 
-Pure functions operating on strings. No I/O, no errors.
+These are pure functions operating on strings. They do
+not perform I/O or return errors.
+`PathFromLogicalName` returns `(result, true)` on success
+and `("", false)` if the input does not match any known
+pattern.
