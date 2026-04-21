@@ -1,5 +1,5 @@
 ---
-version: 16
+version: 19
 parent_version: 10
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
@@ -32,14 +32,15 @@ code.
 
 ### Startup sequence
 
-1. Read `os.Args[1]` as the mode name. If absent or empty,
-   print a usage message to stderr and exit 1.
+1. If `len(os.Args) < 2` or `os.Args[1]` is empty, print a
+   usage message to stderr and exit 1.
 2. If `os.Args[1]` is `--help`, `-h`, or `help`, print the usage
    message to stdout and exit 0.
-3. Create the MCP server via `mcp.NewServer` with
-   `Implementation.Name` = `"subagent-mcp"`.
-4. Match the mode name and call its `Setup`:
-   - `"codegen"` → `codegen.Setup(s, os.Args[2:])`
+3. Match the mode name:
+   - `"codegen"` → create the MCP server via `mcp.NewServer`
+     with `Implementation.Name` = `"subagent-mcp"` and
+     `ServerOptions.Instructions` = `codegen.Instructions`.
+     Call `codegen.Setup(s, os.Args[2:])`.
    - Unrecognized → print a usage message listing valid modes
      to stderr and exit 1.
 5. If `Setup` returns an error, print it to stderr and exit 1.
@@ -53,7 +54,7 @@ code.
 Usage: subagent-mcp <mode> [args...]
 
 Modes:
-  codegen <leaf-logical-name>   Generate code for a spec leaf node.
+  codegen <logical-name>   Generate code for a spec or test node.
 ```
 
 ### Exit codes

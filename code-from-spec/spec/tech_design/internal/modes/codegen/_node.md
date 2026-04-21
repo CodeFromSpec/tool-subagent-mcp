@@ -1,5 +1,5 @@
 ---
-version: 30
+version: 31
 parent_version: 12
 depends_on:
   - path: ROOT/domain/modes/codegen
@@ -78,12 +78,28 @@ path: code-from-spec/external/database/schema.sql
 <<<END_FILE_550e8400-e29b-41d4-a716-446655440000>>>
 ```
 
+### Server instructions
+
+Exposed as a package-level constant `Instructions`. The server
+passes it to `mcp.ServerOptions.Instructions` when creating the
+MCP server.
+
+```
+How to use this MCP server:
+
+1. Call load_context once to receive the context for code
+   generation. Multiple calls are wasteful as it always
+   returns the same content.
+2. Generate the code.
+3. Call write_file once per file to write the result.
+```
+
 ### Tool definitions
 
 #### load_context
 
 Name: `load_context`
-Description: `"Load the full specification context for the current code generation task. Returns all relevant spec files concatenated in a single response."`
+Description: `"Load the context for code generation. Returns all relevant spec files concatenated in a single response."`
 No input parameters.
 
 #### write_file

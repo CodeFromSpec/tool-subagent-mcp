@@ -1,5 +1,5 @@
 ---
-version: 10
+version: 11
 parent_version: 7
 ---
 
@@ -36,6 +36,16 @@ The tool is always executed from the project root directory.
 The working directory of the process is the project root.
 All relative paths — spec files, generated source files — are
 resolved against it.
+
+## Decisions
+
+### Subagent guidance via MCP protocol
+
+Use the MCP protocol's built-in messaging — server instructions
+and tool descriptions — to give the subagent relevant context
+about how to use the server. This complements the prompt the
+subagent receives from the orchestrator and reduces the amount
+of guidance the orchestrator's prompt needs to carry.
 
 ## Constraints
 
