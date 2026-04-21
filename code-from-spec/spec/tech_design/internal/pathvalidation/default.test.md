@@ -1,6 +1,6 @@
 ---
-version: 3
-parent_version: 6
+version: 7
+parent_version: 8
 implements:
   - internal/pathvalidation/pathvalidation_test.go
 ---
@@ -82,5 +82,5 @@ Expect: error containing `"resolves outside project root"`.
 
 ### Traversal disguised with dot segments
 
-Input: `"internal/config/./../../outside"`, project root = temp dir.
+Input: `"a/../../outside"`, project root = temp dir.
 Expect: error containing `"directory traversal"`.

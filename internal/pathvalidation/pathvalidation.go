@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/internal/pathvalidation@v6
+// spec: ROOT/tech_design/internal/pathvalidation@v8
 
 // Package pathvalidation validates that a file path is safe to write within
 // a project directory. This is a security-critical package — it prevents any
@@ -34,7 +34,10 @@ import (
 //
 // Algorithm (spec §Contracts/Algorithm):
 //  1. Reject empty paths.
-//  2. Reject absolute paths (starts with "/" or contains ":" on Windows).
+//  2. Reject absolute paths: strings.HasPrefix(path, "/") catches Unix-style
+//     absolute paths on all platforms (including Windows, where filepath.IsAbs
+//     returns false for "/etc/passwd" without a drive letter). Also reject if
+//     the path contains ":" (Windows drive letter, e.g. "C:\...").
 //  3. Call filepath.Clean to normalize separators and resolve "." segments.
 //  4. Reject if any path component is ".." after cleaning.
 //  5. Resolve the full absolute path: abs = filepath.Join(projectRoot, cleaned).
@@ -48,11 +51,13 @@ func ValidatePath(path string, projectRoot string) error {
 	}
 
 	// Step 2 — Reject absolute paths.
-	// On Unix an absolute path starts with "/".
-	// On Windows a drive-letter path contains ":" (e.g. "C:\...").
-	// filepath.IsAbs covers both cases portably; we additionally guard
-	// against the colon explicitly to match the spec wording.
-	if filepath.IsAbs(path) || strings.Contains(path, ":") {
+	// strings.HasPrefix(path, "/") catches Unix-style absolute paths on every
+	// platform, including Windows where filepath.IsAbs returns false for paths
+	// like "/etc/passwd" that have no drive letter. filepath.IsAbs then catches
+	// any remaining OS-native absolute forms (e.g. "C:\..." on Windows, or a
+	// UNC path). The explicit colon guard covers Windows drive letters as
+	// required by the spec (e.g. "C:relative" where filepath.IsAbs is false).
+	if strings.HasPrefix(path, "/") || filepath.IsAbs(path) || strings.Contains(path, ":") {
 		return fmt.Errorf("path is absolute: %s", path)
 	}
 

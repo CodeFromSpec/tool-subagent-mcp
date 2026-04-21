@@ -1,13 +1,13 @@
 ---
-version: 45
-parent_version: 7
+version: 48
+parent_version: 8
 depends_on:
   - path: EXTERNAL/codefromspec
     version: 1
   - path: ROOT/tech_design/internal/frontmatter
-    version: 23
+    version: 24
   - path: ROOT/tech_design/internal/logical_names
-    version: 21
+    version: 22
 implements:
   - internal/chainresolver/chainresolver.go
 ---
@@ -74,7 +74,9 @@ and process them together.
 For each entry in `DependsOn` whose `LogicalName` starts with
 `ROOT/`:
 1. Call `PathFromLogicalName` to get the file path.
-2. Add a `ChainItem` with a single-element `FilePaths` list to
+2. Verify the file exists on disk (using `os.Stat`). If it does
+   not exist, return error: `"cannot resolve logical name: <name>"`.
+3. Add a `ChainItem` with a single-element `FilePaths` list to
    `Dependencies`.
 
 For each entry in `DependsOn` whose `LogicalName` starts with

@@ -1,6 +1,6 @@
 ---
-version: 6
-parent_version: 7
+version: 8
+parent_version: 8
 depends_on:
   - path: EXTERNAL/owasp-path-traversal
     version: 1
@@ -51,8 +51,11 @@ Returns an error describing the violation otherwise.
 ### Algorithm
 
 1. Reject empty paths.
-2. Reject absolute paths (starts with `/`, or contains `:`
-   on Windows).
+2. Reject absolute paths. Use `strings.HasPrefix(path, "/")` to
+   catch Unix-style absolute paths (including on Windows, where
+   `filepath.IsAbs` returns false for paths starting with `/`
+   without a drive letter). Also reject if the path contains `:`
+   (Windows drive letter, e.g. `C:\...`).
 3. Call `filepath.Clean` on the path to normalize separators
    and resolve `.` segments.
 4. Reject if any component is `..` after cleaning.

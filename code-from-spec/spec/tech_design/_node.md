@@ -1,5 +1,5 @@
 ---
-version: 11
+version: 12
 parent_version: 7
 ---
 
@@ -8,6 +8,13 @@ parent_version: 7
 ## Intent
 
 Technical design decisions for implementing the MCP server in Go.
+
+## Context
+
+### Go module
+
+The module path is `github.com/CodeFromSpec/tool-subagent-mcp`.
+All internal package imports must use this prefix.
 
 ## Contracts
 

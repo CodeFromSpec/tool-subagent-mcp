@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/internal/chain_resolver@v45
+// spec: ROOT/tech_design/internal/chain_resolver@v48
 
 // Package chainresolver resolves the ordered list of files that form the
 // context chain for a given target logical name. The chain is divided into
@@ -9,6 +9,7 @@ package chainresolver
 import (
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -151,6 +152,13 @@ func ResolveChain(targetLogicalName string) (*Chain, error) {
 			// Cross-tree spec dependency — single _node.md file.
 			depPath, ok := logicalnames.PathFromLogicalName(dep.LogicalName)
 			if !ok {
+				return nil, fmt.Errorf("cannot resolve logical name: %s", dep.LogicalName)
+			}
+			// Verify the resolved file actually exists on disk. A logical name can
+			// be syntactically valid but point to a node that has not been created
+			// yet. Treat a missing file the same as an unresolvable logical name so
+			// that callers get a clear, consistent error.
+			if _, err := os.Stat(depPath); err != nil {
 				return nil, fmt.Errorf("cannot resolve logical name: %s", dep.LogicalName)
 			}
 			dependencies = append(dependencies, ChainItem{

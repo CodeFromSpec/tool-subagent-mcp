@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/logical_names@v8
+// spec: TEST/tech_design/internal/logical_names@v9
 
 // Package logicalnames_test exercises the three pure functions
 // exported by package logicalnames:
@@ -12,7 +12,15 @@
 // transformations.
 package logicalnames_test
 
-import "testing"
+import (
+	"testing"
+
+	// logicalnames is the package under test. The external test package
+	// (logicalnames_test) requires an explicit import so that its calls to
+	// PathFromLogicalName, HasParent, and ParentLogicalName resolve to the
+	// exported symbols of the package rather than being undefined identifiers.
+	"github.com/CodeFromSpec/tool-subagent-mcp/internal/logicalnames"
+)
 
 // ---------------------------------------------------------------------------
 // PathFromLogicalName
@@ -100,7 +108,7 @@ func TestPathFromLogicalName(t *testing.T) {
 		tc := tc // capture range variable for parallel sub-tests
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			gotPath, gotOK := PathFromLogicalName(tc.input)
+			gotPath, gotOK := logicalnames.PathFromLogicalName(tc.input)
 			if gotOK != tc.wantOK {
 				t.Errorf("PathFromLogicalName(%q) ok = %v, want %v", tc.input, gotOK, tc.wantOK)
 			}
@@ -203,7 +211,7 @@ func TestHasParent(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			gotHasParent, gotOK := HasParent(tc.input)
+			gotHasParent, gotOK := logicalnames.HasParent(tc.input)
 			if gotOK != tc.wantOK {
 				t.Errorf("HasParent(%q) ok = %v, want %v", tc.input, gotOK, tc.wantOK)
 			}
@@ -300,7 +308,7 @@ func TestParentLogicalName(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			gotParent, gotOK := ParentLogicalName(tc.input)
+			gotParent, gotOK := logicalnames.ParentLogicalName(tc.input)
 			if gotOK != tc.wantOK {
 				t.Errorf("ParentLogicalName(%q) ok = %v, want %v", tc.input, gotOK, tc.wantOK)
 			}

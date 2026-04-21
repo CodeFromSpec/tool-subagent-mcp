@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/pathvalidation@v3
+// spec: TEST/tech_design/internal/pathvalidation@v7
 
 // Package pathvalidation_test exercises ValidatePath against the cases
 // described in the spec leaf node. Each sub-test uses t.TempDir() as the
@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gustavo-neto/tool-subagent-mcp/internal/pathvalidation"
+	"github.com/CodeFromSpec/tool-subagent-mcp/internal/pathvalidation"
 )
 
 // run is a small helper that calls ValidatePath and checks whether the
@@ -196,10 +196,9 @@ func TestFail_SymlinkEscape(t *testing.T) {
 // 'directory traversal'."
 func TestFail_TraversalWithDotSegments(t *testing.T) {
 	root := t.TempDir()
-	// After filepath.Clean, "internal/config/./../../outside" becomes
-	// "outside" — no ".." survives, BUT the path escapes root.
-	// The spec expects "directory traversal" for this case.
-	// The path "internal/config/./../../outside" cleans to "../outside"
-	// which contains a ".." component.
-	run(t, "internal/config/./../../outside", root, true, "directory traversal")
+	// "a/../../outside" has only one directory component before the two ".."
+	// segments, so filepath.Clean resolves it to "../outside" — a path that
+	// actually escapes the project root and retains a ".." component.
+	// ValidatePath must detect the ".." and return a directory traversal error.
+	run(t, "a/../../outside", root, true, "directory traversal")
 }

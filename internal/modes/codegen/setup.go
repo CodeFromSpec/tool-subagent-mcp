@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/internal/modes/codegen/setup@v9
+// spec: ROOT/tech_design/internal/modes/codegen/setup@v11
 
 // Package codegen implements the codegen mode for the subagent-mcp server.
 //
@@ -24,6 +24,17 @@ import (
 	"github.com/CodeFromSpec/tool-subagent-mcp/internal/logicalnames"
 	"github.com/CodeFromSpec/tool-subagent-mcp/internal/pathvalidation"
 )
+
+// Instructions is the server instructions string passed to mcp.ServerOptions.Instructions
+// when creating the MCP server. It tells the subagent how to use the two exposed tools
+// in the correct order. (ROOT/tech_design/internal/modes/codegen §Server instructions)
+const Instructions = `How to use this MCP server:
+
+1. Call load_context once to receive the context for code
+   generation. Multiple calls are wasteful as it always
+   returns the same content.
+2. Generate the code.
+3. Call write_file once per file to write the result.`
 
 // Setup validates arguments, pre-loads the full spec chain, and registers
 // the load_context and write_file tools on the provided MCP server.
