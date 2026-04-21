@@ -1,0 +1,80 @@
+---
+version: 5
+parent_version: 6
+depends_on:
+  - path: EXTERNAL/owasp-path-traversal
+    version: 1
+implements:
+  - internal/pathvalidation/pathvalidation.go
+---
+
+# ROOT/tech_design/internal/pathvalidation
+
+## Intent
+
+Validates that a file path is safe to write to within a project
+directory. This is a security-critical package — it prevents
+writing files outside the intended project boundary.
+
+## Context
+
+### Package
+
+`package pathvalidation`
+
+### Threat model
+
+When a tool accepts a file path as input and writes to disk,
+the path could attempt to escape the project directory using:
+
+- **Relative traversal**: `../../etc/passwd`
+- **Embedded traversal**: `internal/../../outside/file.go`
+- **OS-specific separators**: backslash on Windows (`..\..\`)
+- **Encoding tricks**: URL-encoded or Unicode sequences
+- **Symlinks**: a valid relative path that resolves outside
+  the project via a symlink in the directory tree
+
+This package provides a single validation function that callers
+use before any write operation.
+
+## Contracts
+
+### Interface
+
+```go
+func ValidatePath(path string, projectRoot string) error
+```
+
+Returns nil if the path is safe to write within `projectRoot`.
+Returns an error describing the violation otherwise.
+
+### Algorithm
+
+1. Reject empty paths.
+2. Reject absolute paths (starts with `/`, or contains `:`
+   on Windows).
+3. Call `filepath.Clean` on the path to normalize separators
+   and resolve `.` segments.
+4. Reject if any component is `..` after cleaning.
+5. Resolve the full absolute path:
+   `abs := filepath.Join(projectRoot, cleaned)`.
+6. Call `filepath.EvalSymlinks` on `abs` to resolve any
+   symlinks in the path. If the target does not exist yet,
+   evaluate the longest existing prefix.
+7. Verify that the resolved path starts with `projectRoot`.
+   If not, the path escapes the project — reject it.
+
+### Error messages
+
+- `"path is empty"`
+- `"path is absolute: <path>"`
+- `"path contains directory traversal: <path>"`
+- `"path resolves outside project root: <path>"`
+
+## Constraints
+
+- This function must not write or create anything on disk.
+  It is read-only validation.
+- Never attempt to sanitize or fix an invalid path. Reject
+  and report — the caller decides what to do.
+- Every error must identify the offending path.

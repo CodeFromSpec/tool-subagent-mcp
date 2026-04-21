@@ -1,6 +1,6 @@
 ---
-version: 6
-parent_version: 19
+version: 7
+parent_version: 20
 implements:
   - internal/logicalnames/logicalnames_test.go
 ---

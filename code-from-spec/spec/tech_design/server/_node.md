@@ -1,13 +1,13 @@
 ---
-version: 13
-parent_version: 9
+version: 14
+parent_version: 10
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 1
   - path: ROOT/domain/modes
     version: 12
   - path: ROOT/tech_design/internal/modes
-    version: 11
+    version: 12
 implements:
   - cmd/subagent-mcp/main.go
 ---

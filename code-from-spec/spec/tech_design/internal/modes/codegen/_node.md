@@ -1,9 +1,11 @@
 ---
-version: 27
-parent_version: 11
+version: 30
+parent_version: 12
 depends_on:
   - path: ROOT/domain/modes/codegen
     version: 21
+  - path: ROOT/tech_design/internal/pathvalidation
+    version: 5
 ---
 
 # ROOT/tech_design/internal/modes/codegen
@@ -76,6 +78,26 @@ path: code-from-spec/external/database/schema.sql
 <<<END_FILE_550e8400-e29b-41d4-a716-446655440000>>>
 ```
 
+### Tool definitions
+
+#### load_context
+
+Name: `load_context`
+Description: `"Load the full specification context for the current code generation task. Returns all relevant spec files concatenated in a single response."`
+No input parameters.
+
+#### write_file
+
+Name: `write_file`
+Description: `"Write a generated source file to disk. The path must be one of the files declared in the current node's implements list. Overwrites existing content."`
+
+Input parameters:
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | yes | Relative file path from project root. |
+| `content` | string | yes | Complete file content to write. |
+
 ### WriteFileArgs type
 
 ```go
@@ -107,3 +129,12 @@ func handleWriteFile(target *Target) func(
 
 Each function takes a `*Target` and returns the closure that
 `Setup` passes to `mcp.AddTool`.
+
+### Path validation — defense in depth
+
+File paths from `implements` are validated using `ValidatePath`
+at two points: once during setup (rejects the entire invocation
+if any path is invalid) and again in the `write_file` handler
+before each write. This ensures that even if the setup
+validation is bypassed or the `Target` struct is constructed
+incorrectly, the write is still blocked.

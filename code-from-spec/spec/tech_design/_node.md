@@ -1,5 +1,5 @@
 ---
-version: 9
+version: 10
 parent_version: 7
 ---
 
@@ -29,6 +29,13 @@ Go (minimum 1.24).
   exit 1. The tool does not start if it cannot be configured.
 - **Tool errors** — returned as MCP tool error responses. The tool
   continues running after a tool error.
+
+### Project root
+
+The tool is always executed from the project root directory.
+The working directory of the process is the project root.
+All relative paths — spec files, generated source files — are
+resolved against it.
 
 ## Constraints
 
