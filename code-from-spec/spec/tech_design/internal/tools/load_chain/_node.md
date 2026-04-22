@@ -1,17 +1,17 @@
 ---
-version: 29
-parent_version: 1
+version: 30
+parent_version: 2
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 1
   - path: ROOT/tech_design/internal/chain_resolver
-    version: 48
+    version: 50
   - path: ROOT/tech_design/internal/frontmatter
-    version: 25
+    version: 26
   - path: ROOT/tech_design/internal/logical_names
-    version: 22
+    version: 23
   - path: ROOT/tech_design/internal/pathvalidation
-    version: 8
+    version: 9
 implements:
   - internal/load_chain/load_chain.go
 ---
