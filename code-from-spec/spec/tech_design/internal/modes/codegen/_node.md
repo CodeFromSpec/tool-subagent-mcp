@@ -1,6 +1,6 @@
 ---
-version: 36
-parent_version: 20
+version: 37
+parent_version: 21
 depends_on:
   - path: ROOT/domain/modes/codegen
     version: 21
@@ -13,7 +13,7 @@ depends_on:
 ## Intent
 
 Technical design for the codegen mode: tool registration
-and package-level state management.
+and handler contracts.
 
 ## Context
 
@@ -27,29 +27,6 @@ All leaf nodes under this subtree generate files in this
 package and directory.
 
 ## Contracts
-
-### Target type
-
-```go
-type Target struct {
-    LogicalName  string
-    FilePath     string
-    Frontmatter  *frontmatter.Frontmatter
-    ChainContent string
-}
-```
-
-`ChainContent` holds the fully concatenated chain loaded during
-`load_context`, ready to be returned to the agent.
-
-### Package-level state
-
-```go
-var currentTarget *Target
-```
-
-Set by `load_context` on first call. `nil` until then.
-`write_file` reads from `currentTarget` directly.
 
 ### Chain output format
 
@@ -129,10 +106,10 @@ MCP server.
 How to use this MCP server:
 
 1. Call load_context with the logical name of the node
-   to generate code for. This loads the context and must be
-   called exactly once per session.
+   to generate code for.
 2. Generate the code from the returned context.
-3. Call write_file once per file to write the result.
+3. Call write_file once per file to write the result,
+   passing the same logical_name used in load_context.
 ```
 
 ### Tool definitions
@@ -140,7 +117,7 @@ How to use this MCP server:
 #### load_context
 
 Name: `load_context`
-Description: `"Load the spec chain context for a given logical name. Must be called exactly once before write_file. Returns all relevant spec files concatenated in a single response."`
+Description: `"Load the spec chain context for a given logical name. Returns all relevant spec files concatenated in a single response."`
 
 Input parameters:
 
@@ -151,12 +128,13 @@ Input parameters:
 #### write_file
 
 Name: `write_file`
-Description: `"Write a generated source file to disk. The path must be one of the files declared in the current node's implements list. Overwrites existing content."`
+Description: `"Write a generated source file to disk. The path must be one of the files declared in the node's implements list. Overwrites existing content."`
 
 Input parameters:
 
 | Name | Type | Required | Description |
 |---|---|---|---|
+| `logical_name` | string | yes | Logical name of the node whose implements list authorizes the write. |
 | `path` | string | yes | Relative file path from project root. |
 | `content` | string | yes | Complete file content to write. |
 
@@ -164,8 +142,9 @@ Input parameters:
 
 ```go
 type WriteFileArgs struct {
-    Path    string `json:"path" jsonschema:"Relative file path from project root."`
-    Content string `json:"content" jsonschema:"Complete file content to write."`
+    LogicalName string `json:"logical_name" jsonschema:"Logical name of the node whose implements list authorizes the write."`
+    Path        string `json:"path" jsonschema:"Relative file path from project root."`
+    Content     string `json:"content" jsonschema:"Complete file content to write."`
 }
 ```
 
@@ -196,11 +175,9 @@ func handleWriteFile(
 ) (*mcp.CallToolResult, any, error)
 ```
 
-### Path validation — defense in depth
+### Path validation
 
 File paths from `implements` are validated using `ValidatePath`
-at two points: once during setup (rejects the entire invocation
-if any path is invalid) and again in the `write_file` handler
-before each write. This ensures that even if the setup
-validation is bypassed or the `Target` struct is constructed
-incorrectly, the write is still blocked.
+in both `load_context` and `write_file` before any write.
+Each handler resolves the frontmatter independently and
+validates the paths against the working directory.

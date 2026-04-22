@@ -1,5 +1,5 @@
 ---
-version: 20
+version: 22
 parent_version: 8
 ---
 
@@ -41,15 +41,10 @@ The server calls it and prints the result when the user runs
 `subagent-mcp <mode> --help` (or `-h` or `help`).
 The server handles help detection before calling `Setup`.
 
-### State sharing
+### Stateless handlers
 
-Tool handlers share state through package-level variables.
-The variable is initialized to its zero value and populated
-at runtime by the first tool call that establishes the state.
-
-#### Decision: package-level variables
-
-`StdioTransport` means a single client per process with no
-concurrent access. Package-level variables are sufficient
-and simple under these constraints.
+Tool handlers must be stateless — each call resolves its
+own inputs independently. The MCP host (e.g. Claude Code)
+keeps a single server process for the entire session, and
+multiple subagents may call tools on it concurrently.
 

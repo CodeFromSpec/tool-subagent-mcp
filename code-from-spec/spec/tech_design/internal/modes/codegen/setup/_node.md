@@ -1,6 +1,6 @@
 ---
 version: 13
-parent_version: 36
+parent_version: 37
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 1

@@ -7,9 +7,9 @@ depends_on:
   - path: ROOT/domain/modes
     version: 12
   - path: ROOT/tech_design/internal/modes
-    version: 20
+    version: 21
   - path: ROOT/tech_design/internal/modes/codegen
-    version: 36
+    version: 37
 implements:
   - cmd/subagent-mcp/main.go
 ---
