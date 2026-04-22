@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/modes/codegen/tools/load_context@v5
+// spec: TEST/tech_design/internal/modes/codegen/tools/load_context@v8
 
 package codegen
 
@@ -11,11 +11,8 @@ import (
 )
 
 // invokeLoadContext calls handleLoadContext with the given logical name.
-// It resets currentTarget to nil before each call so tests are independent.
 func invokeLoadContext(t *testing.T, logicalName string) *mcp.CallToolResult {
 	t.Helper()
-	currentTarget = nil
-	t.Cleanup(func() { currentTarget = nil })
 	result, _, err := handleLoadContext(context.Background(), &mcp.CallToolRequest{}, LoadContextArgs{LogicalName: logicalName})
 	if err != nil {
 		t.Fatalf("handleLoadContext returned unexpected Go error: %v", err)
@@ -41,7 +38,7 @@ func loadContextText(t *testing.T, result *mcp.CallToolResult) string {
 // ── Happy Path ────────────────────────────────────────────────────────────────
 
 // TestHandleLoadContext_ValidRootLeafNode verifies the basic happy path:
-// a valid ROOT/ leaf node returns chain content and sets currentTarget.
+// a valid ROOT/ leaf node returns chain content.
 func TestHandleLoadContext_ValidRootLeafNode(t *testing.T) {
 	root := t.TempDir()
 	buildMinimalSpecTree(t, root, "internal/foo/foo.go")
@@ -56,12 +53,6 @@ func TestHandleLoadContext_ValidRootLeafNode(t *testing.T) {
 	text := loadContextText(t, result)
 	if text == "" {
 		t.Error("expected non-empty chain content")
-	}
-	if currentTarget == nil {
-		t.Error("expected currentTarget to be set after successful load_context")
-	}
-	if currentTarget.LogicalName != "ROOT/a" {
-		t.Errorf("currentTarget.LogicalName = %q, want %q", currentTarget.LogicalName, "ROOT/a")
 	}
 }
 
@@ -79,9 +70,6 @@ func TestHandleLoadContext_ValidTestNode(t *testing.T) {
 
 	if result.IsError {
 		t.Fatalf("expected success, got tool error: %s", loadContextText(t, result))
-	}
-	if currentTarget == nil {
-		t.Error("expected currentTarget to be set")
 	}
 }
 
@@ -143,29 +131,41 @@ func TestHandleLoadContext_ChainContentUsesHeredocFormat(t *testing.T) {
 	}
 }
 
-// ── Failure Cases ─────────────────────────────────────────────────────────────
+// TestHandleLoadContext_RepeatedCallsSucceed verifies that the stateless handler
+// can be called multiple times with the same logical name, succeeding each time.
+// Per spec: "Content may differ between calls because a new UUID is generated each time."
+func TestHandleLoadContext_RepeatedCallsSucceed(t *testing.T) {
+	root := t.TempDir()
+	buildMinimalSpecTree(t, root, "internal/foo/foo.go")
+	restore := chdirTo(t, root)
+	defer restore()
 
-// TestHandleLoadContext_AlreadyCalled verifies that calling load_context twice
-// returns a tool error.
-func TestHandleLoadContext_AlreadyCalled(t *testing.T) {
-	currentTarget = &Target{LogicalName: "ROOT/already"}
-	t.Cleanup(func() { currentTarget = nil })
+	// First call — expect success with non-empty chain content.
+	result1 := invokeLoadContext(t, "ROOT/a")
+	if result1.IsError {
+		t.Fatalf("first call: expected success, got tool error: %s", loadContextText(t, result1))
+	}
+	text1 := loadContextText(t, result1)
+	if text1 == "" {
+		t.Error("first call: expected non-empty chain content")
+	}
 
-	result, _, err := handleLoadContext(context.Background(), &mcp.CallToolRequest{}, LoadContextArgs{LogicalName: "ROOT/a"})
-	if err != nil {
-		t.Fatalf("unexpected Go error: %v", err)
+	// Second call — expect success with non-empty chain content.
+	// Content may differ because a new UUID is generated each time.
+	result2 := invokeLoadContext(t, "ROOT/a")
+	if result2.IsError {
+		t.Fatalf("second call: expected success, got tool error: %s", loadContextText(t, result2))
 	}
-	if !result.IsError {
-		t.Fatal("expected tool error when load_context already called")
-	}
-	if !strings.Contains(loadContextText(t, result), "already called") {
-		t.Errorf("error must mention 'already called', got: %s", loadContextText(t, result))
+	text2 := loadContextText(t, result2)
+	if text2 == "" {
+		t.Error("second call: expected non-empty chain content")
 	}
 }
 
+// ── Failure Cases ─────────────────────────────────────────────────────────────
+
 // TestHandleLoadContext_InvalidPrefix verifies that EXTERNAL/ prefix is rejected.
 func TestHandleLoadContext_InvalidPrefix(t *testing.T) {
-	currentTarget = nil
 	result, _, err := handleLoadContext(context.Background(), &mcp.CallToolRequest{}, LoadContextArgs{LogicalName: "EXTERNAL/something"})
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
@@ -179,9 +179,7 @@ func TestHandleLoadContext_InvalidPrefix(t *testing.T) {
 	}
 }
 
-// TestHandleLoadContext_InvalidLogicalName verifies that a nonexistent node
-// returns a tool error.
-func TestHandleLoadContext_InvalidLogicalName(t *testing.T) {
+func TestHandleLoadContext_NonexistentSpecFile(t *testing.T) {
 	root := t.TempDir()
 	restore := chdirTo(t, root)
 	defer restore()

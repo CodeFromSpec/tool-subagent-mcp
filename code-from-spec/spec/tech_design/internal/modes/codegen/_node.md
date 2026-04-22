@@ -1,6 +1,6 @@
 ---
 version: 37
-parent_version: 21
+parent_version: 22
 depends_on:
   - path: ROOT/domain/modes/codegen
     version: 21

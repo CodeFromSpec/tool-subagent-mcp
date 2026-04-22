@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/internal/modes/codegen/tools/load_context@v28
+// spec: ROOT/tech_design/internal/modes/codegen/tools/load_context@v29
 
 package codegen
 
@@ -80,28 +80,23 @@ func handleLoadContext(
 	args LoadContextArgs,
 ) (*mcp.CallToolResult, any, error) {
 	// Step 1
-	if currentTarget != nil {
-		return toolError("load_context already called for this session"), nil, nil
-	}
-
-	// Step 2
 	if !isValidCodegenTarget(args.LogicalName) {
 		return toolError(fmt.Sprintf("codegen target must be a ROOT/ or TEST/ logical name: %s", args.LogicalName)), nil, nil
 	}
 
-	// Step 3
+	// Step 2
 	filePath, ok := logicalnames.PathFromLogicalName(args.LogicalName)
 	if !ok {
 		return toolError(fmt.Sprintf("invalid logical name: %s", args.LogicalName)), nil, nil
 	}
 
-	// Step 4
+	// Step 3
 	fm, err := frontmatter.ParseFrontmatter(filePath)
 	if err != nil {
 		return toolError(fmt.Sprintf("error loading frontmatter: %v", err)), nil, nil
 	}
 
-	// Step 5
+	// Step 4
 	if len(fm.Implements) == 0 {
 		return toolError(fmt.Sprintf("node %s has no implements", args.LogicalName)), nil, nil
 	}
@@ -115,7 +110,7 @@ func handleLoadContext(
 		}
 	}
 
-	// Step 6
+	// Step 5
 	uuid, err := generateUUID()
 	if err != nil {
 		return toolError(fmt.Sprintf("error generating UUID: %v", err)), nil, nil
@@ -129,15 +124,6 @@ func handleLoadContext(
 		return toolError(fmt.Sprintf("error building chain content: %v", err)), nil, nil
 	}
 
-	// Step 7
-	currentTarget = &Target{
-		LogicalName:  args.LogicalName,
-		FilePath:     filePath,
-		Frontmatter:  fm,
-		ChainContent: chainContent,
-	}
-
-	// Step 8
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: chainContent}},
 	}, nil, nil

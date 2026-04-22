@@ -1,12 +1,15 @@
-// spec: TEST/tech_design/internal/modes/codegen/tools/write_file@v5
+// spec: TEST/tech_design/internal/modes/codegen/tools/write_file@v6
 
 // Package codegen — tests for the write_file tool handler.
 //
 // Spec: ROOT/tech_design/internal/modes/codegen/tools/write_file
 //
-// Each test uses t.TempDir() as the project root and working directory. A
-// Target is created with a known Frontmatter.Implements list. The handler
-// closure returned by handleWriteFile is invoked with WriteFileArgs.
+// The handler is stateless: write_file receives logical_name as a parameter and
+// resolves frontmatter independently. There is no currentTarget, no Target type,
+// no makeWriteFileTarget helper.
+//
+// Each test creates a spec tree under t.TempDir() with frontmatter containing
+// implements. The handler is called with WriteFileArgs including LogicalName.
 //
 // Because handleWriteFile calls os.Getwd() to derive the project root, each
 // test changes the process working directory to its temp dir and restores it
@@ -26,8 +29,6 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-
-	"github.com/CodeFromSpec/tool-subagent-mcp/internal/frontmatter"
 )
 
 // chdirTemp changes the process working directory to dir and registers a
@@ -50,35 +51,6 @@ func chdirTemp(t *testing.T, dir string) {
 	})
 }
 
-// makeWriteFileTarget builds a minimal *Target whose Frontmatter contains only
-// the given implements paths. LogicalName and FilePath are placeholder values
-// because the write_file handler does not inspect them.
-func makeWriteFileTarget(implements []string) *Target {
-	return &Target{
-		LogicalName: "TEST/write_file_test",
-		FilePath:    "placeholder",
-		Frontmatter: &frontmatter.Frontmatter{
-			Implements: implements,
-		},
-	}
-}
-
-// invokeWriteFile sets currentTarget and calls handleWriteFile directly.
-// It resets currentTarget to nil after the test.
-func invokeWriteFile(t *testing.T, target *Target, args WriteFileArgs) *mcp.CallToolResult {
-	t.Helper()
-	currentTarget = target
-	t.Cleanup(func() { currentTarget = nil })
-	result, _, err := handleWriteFile(context.Background(), &mcp.CallToolRequest{}, args)
-	if err != nil {
-		t.Fatalf("handleWriteFile returned unexpected Go error: %v", err)
-	}
-	if result == nil {
-		t.Fatal("handleWriteFile returned nil result")
-	}
-	return result
-}
-
 // resultText extracts the text from the first content entry of result.
 // It fails the test if the content is missing or is not *mcp.TextContent.
 func resultText(t *testing.T, result *mcp.CallToolResult) string {
@@ -93,58 +65,35 @@ func resultText(t *testing.T, result *mcp.CallToolResult) string {
 	return tc.Text
 }
 
-// ── Failure Cases (target nil) ────────────────────────────────────────────────
-
-// TestWriteFile_NoTargetLoaded verifies that calling write_file before
-// load_context returns a tool error.
-func TestWriteFile_NoTargetLoaded(t *testing.T) {
-	currentTarget = nil
-	result, _, err := handleWriteFile(context.Background(), &mcp.CallToolRequest{}, WriteFileArgs{Path: "any/file.go"})
-	if err != nil {
-		t.Fatalf("unexpected Go error: %v", err)
-	}
-	if !result.IsError {
-		t.Fatal("expected tool error when currentTarget is nil")
-	}
-	text := resultText(t, result)
-	if !strings.Contains(text, "load_context must be called before write_file") {
-		t.Errorf("error must contain expected message, got: %s", text)
-	}
-}
-
 // ── Happy Path ────────────────────────────────────────────────────────────────
 
 // TestWriteFile_WritesFileSuccessfully verifies the baseline success case:
-// a file path that appears in Implements is written to disk and the result text
-// equals "wrote <path>".
-//
-// Spec §Happy Path / "Writes file successfully":
-//   - Create a Target with Implements: ["output/file.go"].
-//   - Call handler with Path:"output/file.go", Content:"package main".
-//   - Expect: success result with text "wrote output/file.go".
-//   - Verify the file exists on disk with the correct content.
+// a spec tree with ROOT/a having implements: ["output/file.go"], the handler is
+// called with LogicalName: "ROOT/a", Path: "output/file.go", Content: "package main".
+// Expect success "wrote output/file.go", verify file on disk.
 func TestWriteFile_WritesFileSuccessfully(t *testing.T) {
 	root := t.TempDir()
 	chdirTemp(t, root)
 
-	target := makeWriteFileTarget([]string{"output/file.go"})
-	result := invokeWriteFile(t, target, WriteFileArgs{
-		Path:    "output/file.go",
-		Content: "package main",
-	})
+	buildMinimalSpecTree(t, root, "output/file.go")
 
-	// Expect success (not an MCP tool error).
+	result, _, err := handleWriteFile(context.Background(), &mcp.CallToolRequest{}, WriteFileArgs{
+		LogicalName: "ROOT/a",
+		Path:        "output/file.go",
+		Content:     "package main",
+	})
+	if err != nil {
+		t.Fatalf("handleWriteFile returned unexpected Go error: %v", err)
+	}
 	if result.IsError {
 		t.Fatalf("expected success, got tool error: %s", resultText(t, result))
 	}
 
-	// Result text must be "wrote output/file.go".
 	got := resultText(t, result)
 	if got != "wrote output/file.go" {
 		t.Errorf("result text: got %q, want %q", got, "wrote output/file.go")
 	}
 
-	// The file must exist on disk with the exact content that was passed in.
 	written, err := os.ReadFile(filepath.Join(root, "output/file.go"))
 	if err != nil {
 		t.Fatalf("file not found after write: %v", err)
@@ -156,27 +105,24 @@ func TestWriteFile_WritesFileSuccessfully(t *testing.T) {
 
 // TestWriteFile_CreatesIntermediateDirectories verifies that the handler
 // creates any missing parent directories before writing the target file.
-//
-// Spec §Happy Path / "Creates intermediate directories":
-//   - Create a Target with Implements: ["deep/nested/dir/file.go"].
-//   - Call handler with Path:"deep/nested/dir/file.go".
-//   - Expect: success. Directories created automatically.
 func TestWriteFile_CreatesIntermediateDirectories(t *testing.T) {
 	root := t.TempDir()
 	chdirTemp(t, root)
 
-	target := makeWriteFileTarget([]string{"deep/nested/dir/file.go"})
-	result := invokeWriteFile(t, target, WriteFileArgs{
-		Path:    "deep/nested/dir/file.go",
-		Content: "package deep",
-	})
+	buildMinimalSpecTree(t, root, "deep/nested/dir/file.go")
 
+	result, _, err := handleWriteFile(context.Background(), &mcp.CallToolRequest{}, WriteFileArgs{
+		LogicalName: "ROOT/a",
+		Path:        "deep/nested/dir/file.go",
+		Content:     "package deep",
+	})
+	if err != nil {
+		t.Fatalf("handleWriteFile returned unexpected Go error: %v", err)
+	}
 	if result.IsError {
 		t.Fatalf("expected success, got tool error: %s", resultText(t, result))
 	}
 
-	// Confirm the file exists — which implies all intermediate directories were
-	// created by the handler (they did not exist before the call).
 	if _, err := os.Stat(filepath.Join(root, "deep/nested/dir/file.go")); err != nil {
 		t.Errorf("expected file to exist after write: %v", err)
 	}
@@ -184,15 +130,11 @@ func TestWriteFile_CreatesIntermediateDirectories(t *testing.T) {
 
 // TestWriteFile_OverwritesExistingFile verifies that calling the handler on a
 // path that already holds content replaces that content completely.
-//
-// Spec §Happy Path / "Overwrites existing file":
-//   - Create a Target with Implements: ["output/file.go"].
-//   - Write an initial file at that path.
-//   - Call handler with new content.
-//   - Expect: success. File content replaced.
 func TestWriteFile_OverwritesExistingFile(t *testing.T) {
 	root := t.TempDir()
 	chdirTemp(t, root)
+
+	buildMinimalSpecTree(t, root, "output/file.go")
 
 	// Pre-create the directory and file so there is existing content to overwrite.
 	if err := os.MkdirAll(filepath.Join(root, "output"), 0o755); err != nil {
@@ -202,17 +144,18 @@ func TestWriteFile_OverwritesExistingFile(t *testing.T) {
 		t.Fatalf("failed to write initial file: %v", err)
 	}
 
-	target := makeWriteFileTarget([]string{"output/file.go"})
-	result := invokeWriteFile(t, target, WriteFileArgs{
-		Path:    "output/file.go",
-		Content: "new content",
+	result, _, err := handleWriteFile(context.Background(), &mcp.CallToolRequest{}, WriteFileArgs{
+		LogicalName: "ROOT/a",
+		Path:        "output/file.go",
+		Content:     "new content",
 	})
-
+	if err != nil {
+		t.Fatalf("handleWriteFile returned unexpected Go error: %v", err)
+	}
 	if result.IsError {
 		t.Fatalf("expected success, got tool error: %s", resultText(t, result))
 	}
 
-	// The file must now contain only the new content — old content fully replaced.
 	written, err := os.ReadFile(filepath.Join(root, "output/file.go"))
 	if err != nil {
 		t.Fatalf("file not found after overwrite: %v", err)
@@ -224,34 +167,69 @@ func TestWriteFile_OverwritesExistingFile(t *testing.T) {
 
 // ── Failure Cases ─────────────────────────────────────────────────────────────
 
+// TestWriteFile_InvalidLogicalNamePrefix verifies that a logical name with an
+// invalid prefix (e.g. "EXTERNAL/something") is rejected with a tool error.
+func TestWriteFile_InvalidLogicalNamePrefix(t *testing.T) {
+	root := t.TempDir()
+	chdirTemp(t, root)
+
+	result, _, err := handleWriteFile(context.Background(), &mcp.CallToolRequest{}, WriteFileArgs{
+		LogicalName: "EXTERNAL/something",
+		Path:        "any/file.go",
+		Content:     "whatever",
+	})
+	if err != nil {
+		t.Fatalf("handleWriteFile returned unexpected Go error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected tool error for invalid prefix, got success: %s", resultText(t, result))
+	}
+}
+
+// TestWriteFile_NonexistentLogicalName verifies that a logical name that does
+// not correspond to any spec file on disk is rejected with a tool error.
+func TestWriteFile_NonexistentLogicalName(t *testing.T) {
+	root := t.TempDir()
+	chdirTemp(t, root)
+
+	// No spec tree created — ROOT/nonexistent has no backing file.
+	result, _, err := handleWriteFile(context.Background(), &mcp.CallToolRequest{}, WriteFileArgs{
+		LogicalName: "ROOT/nonexistent",
+		Path:        "any/file.go",
+		Content:     "whatever",
+	})
+	if err != nil {
+		t.Fatalf("handleWriteFile returned unexpected Go error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected tool error for nonexistent logical name, got success: %s", resultText(t, result))
+	}
+}
+
 // TestWriteFile_PathNotInImplements verifies that a path absent from the
-// target's Implements list is rejected with a descriptive tool error.
-//
-// Spec §Failure Cases / "Path not in implements":
-//   - Create a Target with Implements: ["allowed/file.go"].
-//   - Call handler with Path:"other/file.go".
-//   - Expect: tool error containing "path not allowed" and listing allowed paths.
+// node's implements list is rejected with a descriptive tool error.
 func TestWriteFile_PathNotInImplements(t *testing.T) {
 	root := t.TempDir()
 	chdirTemp(t, root)
 
-	target := makeWriteFileTarget([]string{"allowed/file.go"})
-	result := invokeWriteFile(t, target, WriteFileArgs{
-		Path:    "other/file.go",
-		Content: "package other",
-	})
+	buildMinimalSpecTree(t, root, "allowed/file.go")
 
+	result, _, err := handleWriteFile(context.Background(), &mcp.CallToolRequest{}, WriteFileArgs{
+		LogicalName: "ROOT/a",
+		Path:        "other/file.go",
+		Content:     "package other",
+	})
+	if err != nil {
+		t.Fatalf("handleWriteFile returned unexpected Go error: %v", err)
+	}
 	if !result.IsError {
 		t.Fatalf("expected tool error, got success with text: %s", resultText(t, result))
 	}
 
 	text := resultText(t, result)
-
-	// The error message must identify the violation.
 	if !strings.Contains(text, "path not allowed") {
 		t.Errorf("error text must contain %q, got: %s", "path not allowed", text)
 	}
-	// The error message must list the allowed paths so the agent can act on it.
 	if !strings.Contains(text, "allowed/file.go") {
 		t.Errorf("error text must list allowed path %q, got: %s", "allowed/file.go", text)
 	}
@@ -259,60 +237,46 @@ func TestWriteFile_PathNotInImplements(t *testing.T) {
 
 // TestWriteFile_PathTraversalAttempt verifies that a path containing directory
 // traversal sequences is caught by ValidatePath and returned as a tool error.
-//
-// Spec §Failure Cases / "Path traversal attempt":
-//   - Create a Target with Implements: ["../../etc/passwd"].
-//   - Call handler with Path:"../../etc/passwd".
-//   - Expect: tool error from ValidatePath.
-//
-// Note: we place the traversal path in Implements so the implements check does
-// not fire before ValidatePath — per the handler algorithm, ValidatePath runs
-// first (step 1), before the implements check (step 2). Putting it in Implements
-// isolates which guard triggers the error.
 func TestWriteFile_PathTraversalAttempt(t *testing.T) {
 	root := t.TempDir()
 	chdirTemp(t, root)
 
-	// Both the target implements list and the call use the traversal path.
-	// ValidatePath must fire at step 1 and reject the write.
-	target := makeWriteFileTarget([]string{"../../etc/passwd"})
-	result := invokeWriteFile(t, target, WriteFileArgs{
-		Path:    "../../etc/passwd",
-		Content: "malicious",
-	})
+	buildMinimalSpecTree(t, root, "../../etc/passwd")
 
-	// The handler must return an MCP tool error — no panic, no write.
+	result, _, err := handleWriteFile(context.Background(), &mcp.CallToolRequest{}, WriteFileArgs{
+		LogicalName: "ROOT/a",
+		Path:        "../../etc/passwd",
+		Content:     "malicious",
+	})
+	if err != nil {
+		t.Fatalf("handleWriteFile returned unexpected Go error: %v", err)
+	}
 	if !result.IsError {
 		t.Fatalf("expected tool error for traversal path, got success: %s", resultText(t, result))
 	}
-	// No file must have been written outside the temp directory.
-	// We do not assert the exact message wording — only IsError:true is
-	// mandated by the spec for this case (the error originates from ValidatePath).
 }
 
 // TestWriteFile_EmptyPath verifies that an empty path string is rejected
-// immediately with a "path is empty" tool error (before any other check).
-//
-// Spec §Failure Cases / "Empty path":
-//   - Call handler with Path:"".
-//   - Expect: tool error containing "path is empty".
+// immediately with a "path is empty" tool error.
 func TestWriteFile_EmptyPath(t *testing.T) {
 	root := t.TempDir()
 	chdirTemp(t, root)
 
-	target := makeWriteFileTarget([]string{"some/file.go"})
-	result := invokeWriteFile(t, target, WriteFileArgs{
-		Path:    "",
-		Content: "whatever",
-	})
+	buildMinimalSpecTree(t, root, "some/file.go")
 
+	result, _, err := handleWriteFile(context.Background(), &mcp.CallToolRequest{}, WriteFileArgs{
+		LogicalName: "ROOT/a",
+		Path:        "",
+		Content:     "whatever",
+	})
+	if err != nil {
+		t.Fatalf("handleWriteFile returned unexpected Go error: %v", err)
+	}
 	if !result.IsError {
 		t.Fatalf("expected tool error for empty path, got success: %s", resultText(t, result))
 	}
 
 	text := resultText(t, result)
-	// ValidatePath returns "path is empty" for an empty string (spec §pathvalidation).
-	// The write_file handler wraps this message in the tool error text.
 	if !strings.Contains(text, "path is empty") {
 		t.Errorf("error text must contain %q, got: %s", "path is empty", text)
 	}
@@ -321,40 +285,32 @@ func TestWriteFile_EmptyPath(t *testing.T) {
 // TestWriteFile_SymlinkEscapingProjectRoot verifies that a symlink inside the
 // temp dir that resolves outside the project root is detected and rejected.
 //
-// Spec §Failure Cases / "Symlink escaping project root":
-//   - Create a symlink inside the temp dir pointing outside it.
-//   - Add the symlink path to Implements.
-//   - Call handler with that path.
-//   - Expect: tool error containing "resolves outside project root".
-//
 // The test is skipped when symlink creation requires elevated privileges (common
 // on Windows without Developer Mode or SeCreateSymbolicLinkPrivilege).
 func TestWriteFile_SymlinkEscapingProjectRoot(t *testing.T) {
 	root := t.TempDir()
 	chdirTemp(t, root)
 
-	// Point the symlink at the OS temp dir, which is always outside root
-	// (root is itself a child of os.TempDir()).
 	symlinkName := "escape_link"
 	if err := os.Symlink(os.TempDir(), filepath.Join(root, symlinkName)); err != nil {
 		t.Skipf("cannot create symlink (may need elevated privileges): %v", err)
 	}
 
-	// The symlink name is added to Implements so the handler reaches ValidatePath
-	// (step 1) and does not stop early at the implements check (step 2).
-	target := makeWriteFileTarget([]string{symlinkName})
-	result := invokeWriteFile(t, target, WriteFileArgs{
-		Path:    symlinkName,
-		Content: "malicious",
-	})
+	buildMinimalSpecTree(t, root, symlinkName)
 
+	result, _, err := handleWriteFile(context.Background(), &mcp.CallToolRequest{}, WriteFileArgs{
+		LogicalName: "ROOT/a",
+		Path:        symlinkName,
+		Content:     "malicious",
+	})
+	if err != nil {
+		t.Fatalf("handleWriteFile returned unexpected Go error: %v", err)
+	}
 	if !result.IsError {
 		t.Fatalf("expected tool error for symlink escaping project root, got success: %s", resultText(t, result))
 	}
 
 	text := resultText(t, result)
-	// ValidatePath returns "path resolves outside project root: <path>" for this
-	// case. The write_file handler includes this in the tool error text.
 	if !strings.Contains(text, "resolves outside project root") {
 		t.Errorf("error text must contain %q, got: %s", "resolves outside project root", text)
 	}

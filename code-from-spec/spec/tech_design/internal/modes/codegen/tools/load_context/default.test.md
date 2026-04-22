@@ -1,6 +1,6 @@
 ---
-version: 5
-parent_version: 28
+version: 8
+parent_version: 29
 implements:
   - internal/modes/codegen/load_context_test.go
 ---
@@ -12,28 +12,25 @@ implements:
 Each test uses `t.TempDir()` to create an isolated project
 structure with the necessary spec files. The working directory
 is changed to the temp dir for the duration of the test so that
-path validation resolves correctly. `currentTarget` is reset
-to `nil` before each test.
+path validation resolves correctly.
 
 ## Happy Path
 
 ### Valid ROOT/ leaf node
 
 Create a spec tree: `ROOT` and `ROOT/a` (leaf with
-`implements` and no dependencies). Set `currentTarget = nil`.
-Call `handleLoadContext` with `LogicalName: "ROOT/a"`.
+`implements` and no dependencies). Call `handleLoadContext`
+with `LogicalName: "ROOT/a"`.
 
 Expect: success result. Text contains the chain content
-with files from `ROOT` and `ROOT/a`. `currentTarget` is
-set with `LogicalName`, `FilePath`, `Frontmatter`, and
-`ChainContent` populated.
+with files from `ROOT` and `ROOT/a`.
 
 ### Valid TEST/ node
 
 Create a spec tree: `ROOT`, `ROOT/a` (leaf), and `TEST/a`.
 Call `handleLoadContext` with `LogicalName: "TEST/a"`.
 
-Expect: success result. `currentTarget` is set.
+Expect: success result.
 
 ### Node with dependencies
 
@@ -54,15 +51,17 @@ Create a spec tree: `ROOT` and `ROOT/a` (leaf with
 Expect: success result. Text contains `<<<FILE_` and
 `<<<END_FILE_` delimiters with `node:` and `path:` headers.
 
+### Repeated calls succeed
+
+Create a spec tree: `ROOT` and `ROOT/a` (leaf with
+`implements`). Call `handleLoadContext` twice with the
+same `LogicalName`.
+
+Expect: both calls return success with non-empty chain
+content. Content may differ between calls because a new
+UUID is generated each time.
+
 ## Failure Cases
-
-### Already called
-
-Set `currentTarget` to a non-nil `Target`. Call
-`handleLoadContext`.
-
-Expect: tool error containing
-`"load_context already called for this session"`.
 
 ### Invalid prefix
 
@@ -72,13 +71,13 @@ Call `handleLoadContext` with
 Expect: tool error containing `"codegen target must be a
 ROOT/ or TEST/"`.
 
-### Invalid logical name
+### Nonexistent spec file
 
 Call `handleLoadContext` with
 `LogicalName: "ROOT/nonexistent"`. Do not create the
 corresponding spec file.
 
-Expect: tool error containing `"invalid logical name"`.
+Expect: tool error (from `ParseFrontmatter` — file not found).
 
 ### No implements
 
