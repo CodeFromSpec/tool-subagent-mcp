@@ -1,5 +1,5 @@
 ---
-version: 10
+version: 12
 parent_version: 53
 implements:
   - internal/chainresolver/chainresolver_test.go
@@ -12,6 +12,9 @@ implements:
 Tests use `t.TempDir()` to create an isolated project structure
 with spec nodes, test nodes, and external dependencies. Each test
 builds the minimal filesystem needed and calls `ResolveChain`.
+
+File paths in `ChainItem.FilePaths` use forward slashes regardless
+of the OS. Test assertions must use forward slashes.
 
 ## Happy Path
 
@@ -131,7 +134,7 @@ Expect error containing `"cannot resolve logical name"`.
 
 Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
 `EXTERNAL/api` with filter `["[invalid"]`). Create external
-dependency `api`.
+dependency `api` with `_external.md` and `data.txt`.
 
 Input: `"ROOT/a"`
 
