@@ -1,6 +1,6 @@
 ---
-version: 12
-parent_version: 7
+version: 13
+parent_version: 8
 ---
 
 # ROOT/tech_design
@@ -24,15 +24,14 @@ Go (minimum 1.24).
 
 ### Dependencies
 
+- Standard library unless explicitly stated otherwise.
 - `github.com/modelcontextprotocol/go-sdk` — Official MCP SDK
   (stdio transport, tool registration with generics, request
   handling).
-- Standard library for everything else.
 
 ### Error handling
 
-- **Startup errors** (missing or invalid mode argument, unresolvable
-  target node, unreadable frontmatter) — print to stderr and
+- **Startup errors** (unexpected arguments) — print to stderr and
   exit 1. The tool does not start if it cannot be configured.
 - **Tool errors** — returned as MCP tool error responses. The tool
   continues running after a tool error.
@@ -48,15 +47,14 @@ resolved against it.
 
 ### Subagent guidance via MCP protocol
 
-Use the MCP protocol's built-in messaging — server instructions
-and tool descriptions — to give the subagent relevant context
-about how to use the server. This complements the prompt the
-subagent receives from the orchestrator and reduces the amount
-of guidance the orchestrator's prompt needs to carry.
+Use the MCP protocol's built-in tool descriptions to give the
+subagent relevant context about how to use the server. This
+complements the prompt the subagent receives from the orchestrator
+and reduces the amount of guidance the orchestrator's prompt needs
+to carry.
 
 ## Constraints
 
 - Every error return value must be checked.
 - No test framework beyond the standard `testing` package.
-- No configuration files. All behavior is determined by CLI
-  arguments.
+- No configuration files.

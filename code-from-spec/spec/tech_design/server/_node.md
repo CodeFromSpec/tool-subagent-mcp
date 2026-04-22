@@ -1,15 +1,11 @@
 ---
-version: 26
+version: 27
 parent_version: 12
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 1
-  - path: ROOT/domain/modes
-    version: 12
-  - path: ROOT/tech_design/internal/modes
-    version: 22
-  - path: ROOT/tech_design/internal/modes/codegen
-    version: 37
+  - path: ROOT/tech_design/internal/tools
+    version: 1
 implements:
   - cmd/subagent-mcp/main.go
 ---
@@ -18,9 +14,8 @@ implements:
 
 ## Intent
 
-Entry point: reads the mode argument, dispatches to the
-corresponding mode handler, and exits with the appropriate
-code.
+Entry point: handles argument validation, creates and configures
+the MCP server, registers tools, and runs the server.
 
 ## Context
 
@@ -32,22 +27,14 @@ code.
 
 ### Startup sequence
 
-1. If `len(os.Args) < 2` or `os.Args[1]` is empty, print a
-   usage message to stderr and exit 1.
-2. If `os.Args[1]` is `--help`, `-h`, or `help`, print the usage
-   message to stdout and exit 0.
-3. Match the mode name:
-   - `"codegen"`:
-     a. If `len(os.Args) > 2` and `os.Args[2]` is `--help`,
-        `-h`, or `help`, print `codegen.HelpMessage()` to
-        stdout and exit 0.
-     b. Create the MCP server via `mcp.NewServer` with
-        `Implementation.Name` = `"subagent-mcp"` and
-        `ServerOptions.Instructions` = `codegen.Instructions`.
-     c. Call `codegen.Setup(s, os.Args[2:])`.
-   - Unrecognized → print a usage message listing valid modes
-     to stderr and exit 1.
-4. If `Setup` returns an error, print it to stderr and exit 1.
+1. If `len(os.Args) > 1` and `os.Args[1]` is `--help`, `-h`, or
+   `help`, print the usage message to stdout and exit 0.
+2. If `len(os.Args) > 1` (any other argument), print the usage
+   message to stderr and exit 1.
+3. Create the MCP server via `mcp.NewServer` with
+   `Implementation.Name` = `"subagent-mcp"`.
+4. Register `load_chain` and `write_file` tools on the server
+   using `mcp.AddTool`.
 5. Call `s.Run(context.Background(), &mcp.StdioTransport{})`.
 6. If `Run` returns an error, print it to stderr and exit 1.
 7. Otherwise exit 0.
@@ -55,12 +42,29 @@ code.
 ### Usage message
 
 ```
-Usage: subagent-mcp <mode> [args...]
+Usage: subagent-mcp
 
-Modes:
-  codegen   Start the codegen MCP server.
+Starts an MCP server over stdin/stdout for Code from Spec
+subagents.
 
-Run subagent-mcp <mode> --help for mode-specific help.
+Tools:
+  load_chain     Load the spec chain for a node.
+  write_file     Write a generated file to disk.
+
+The subagent should have no other tools available — no file
+read, write, or search capabilities beyond what this server
+provides. This confinement ensures the subagent works only
+from the provided context and writes only to declared outputs.
+
+MCP configuration example:
+  {
+    "mcpServers": {
+      "subagent-mcp": {
+        "type": "stdio",
+        "command": "<path-to-binary>"
+      }
+    }
+  }
 ```
 
 ### Exit codes
@@ -68,4 +72,4 @@ Run subagent-mcp <mode> --help for mode-specific help.
 | Code | Meaning |
 |---|---|
 | 0 | Clean shutdown. |
-| 1 | Startup error or mode error. |
+| 1 | Startup error or server error. |

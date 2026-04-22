@@ -1,31 +1,36 @@
 ---
-version: 7
+version: 8
 ---
 
 # ROOT
 
 ## Intent
 
-Local MCP server for Code from Spec subagents. Runs as a process
-inside any Code from Spec project, exposes a set of tools determined
-by the requested mode, and restricts the subagent to exactly those
-tools.
+Local MCP server for Code from Spec subagents. Exposes tools
+that subagents use to interact with the spec tree and generate
+code.
 
 ## Context
 
-AI agent frameworks typically offer no native mechanism to restrict
-a subagent's filesystem access or scope its actions to a specific
-task. This server is the enforcement layer: the orchestrator
-launches it with a specific mode and parameters, and the subagent
-can only do what the server's tools allow.
+Given unrestricted file access, a subagent will compensate for
+perceived gaps in its context by exploring the repository — reading
+generated source files, unrelated specs, or framework documentation
+— rather than stopping to report ambiguity. This produces
+hallucinated or inconsistent output and makes the process
+unpredictable. This server exists to mediate the subagent's
+access: it controls what the subagent can read and where it can
+write, so that the correct workflow is the only possible workflow.
 
 ## Contracts
 
 ### Invocation
 
 ```
-subagent-mcp <mode> [args...]
+subagent-mcp
 ```
+
+Any argument causes the tool to print a usage message and exit.
+`--help`, `-h`, and `help` exit 0; any other argument exits 1.
 
 ### Distribution
 
@@ -33,21 +38,50 @@ The binary may be placed inside the host project repository at a
 path chosen by that project. No installation on the machine is
 required.
 
+### Deployment
+
+The server is registered once in the project's Claude Code
+configuration (`.claude/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "subagent-mcp": {
+      "type": "stdio",
+      "command": "<path-to-subagent-mcp>"
+    }
+  }
+}
+```
+
+Once configured, the server is available to all sessions and
+subagents in that project. No per-invocation setup or teardown
+is needed.
+
 ### Concurrency
 
 Multiple instances may run in parallel without conflict. Each is an
-independent OS process with its own mode and state.
+independent OS process with its own state.
 
-## Constraints
+### Preconditions
 
-- Each mode is responsible for its own argument validation and
-  tool registration.
+The orchestrator must run `staleness-check` and confirm that the
+target node and its dependencies are up to date before invoking
+a subagent. Operating on a stale spec may produce incorrect
+results — enforcing this is the orchestrator's responsibility.
 
 ## Decisions
 
-### Extensible by design
+### Confinement is the caller's responsibility
 
-Although the tool was created for code generation, it is natural
-to extend it to support other subagent workflows in the future.
-The mode-based architecture allows adding new capabilities without
-changing existing ones.
+The server exposes every tool it has to every connection. If a
+subagent should only use a subset, the orchestrator must enforce
+that by configuring the subagent itself — not by asking the server
+to hide tools. This avoids mode selection logic in the server and
+keeps the tool surface predictable.
+
+### Minimal tool surface
+
+Purpose-built tools combined with caller-side restriction of
+which tools a subagent can call constrain the agent's action
+space, making correct behavior more likely by construction.
