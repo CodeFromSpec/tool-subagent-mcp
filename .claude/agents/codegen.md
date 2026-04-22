@@ -71,7 +71,7 @@ if it makes the result easier for a human to verify.
 - **Skip unnecessary work.** If the existing code already satisfies
   the specification, do not regenerate it.
 
-### Version marker
+### Spec comment
 
 Every generated file must contain the string:
 ```
