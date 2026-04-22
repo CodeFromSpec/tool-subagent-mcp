@@ -1,7 +1,9 @@
 ---
-version: 31
+version: 33
 parent_version: 3
 depends_on:
+  - path: EXTERNAL/google-uuid
+    version: 1
   - path: EXTERNAL/mcp-go-sdk
     version: 1
   - path: ROOT/tech_design/internal/chain_resolver
@@ -61,7 +63,7 @@ type LoadChainArgs struct {
 ### Handler
 
 ```go
-func handleLoadChain(
+func HandleLoadChain(
     ctx context.Context,
     req *mcp.CallToolRequest,
     args LoadChainArgs,
@@ -119,10 +121,11 @@ path: code-from-spec/external/database/schema.sql
       implements"`.
    b. Call `ValidatePath` for each path against the working
       directory. If any fails, return a tool error.
-5. Generate a UUID. Call `ResolveChain` to resolve the full
-   chain and read every file in the chain into memory. Build
-   the concatenated chain content using the UUID and the chain
-   output format. If any step fails, return a tool error.
+5. Generate a UUID using `github.com/google/uuid`. Call
+   `ResolveChain` to resolve the full chain and read every file
+   in the chain into memory. Build the concatenated chain content
+   using the UUID and the chain output format. If any step fails,
+   return a tool error.
 6. Return the chain content as a success result.
 
 ## Constraints
