@@ -1,161 +1,142 @@
-// spec: ROOT/tech_design/internal/pathvalidation@v8
+// spec: ROOT/tech_design/internal/pathvalidation@v10
 
-// Package pathvalidation validates that a file path is safe to write within
-// a project directory. This is a security-critical package — it prevents any
-// write operation from escaping the intended project boundary.
+// Package pathvalidation provides security-critical path validation to prevent
+// writing files outside the intended project directory boundary.
 //
-// Threat model (from spec):
-//   - Relative traversal:     ../../etc/passwd
-//   - Embedded traversal:     internal/../../outside/file.go
-//   - OS-specific separators: backslash on Windows (..\..\)
-//   - Encoding tricks:        URL-encoded or Unicode sequences
-//   - Symlinks:               a valid-looking relative path that resolves
-//     outside the project via a symlink in the directory tree
+// Spec ref: ROOT/tech_design/internal/pathvalidation § "Intent"
+// Threat model addressed: EXTERNAL/owasp-path-traversal § "What is path traversal"
 //
-// OWASP guidance applied here:
-//   - Normalize before validating (filepath.Clean)
-//   - Resolve symlinks before containment check (filepath.EvalSymlinks)
-//   - Reject, never sanitize
-//   - Prefer allow-list reasoning: only paths that pass every gate are accepted
+// This package defends against the following attack vectors:
+//   - Relative traversal (../../etc/passwd)
+//   - Embedded traversal (internal/../../outside/file.go)
+//   - OS-specific separators (backslash on Windows)
+//   - Encoding tricks (URL-encoded or Unicode sequences resolved by filepath.Clean)
+//   - Symlinks (valid-looking paths that resolve outside the project via symlinks)
 package pathvalidation
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-// ValidatePath checks whether path is a safe relative path that, when joined
-// with projectRoot, remains inside the project directory tree.
+// ValidatePath checks that path is safe to write within projectRoot.
 //
-// Returns nil when the path is safe. Returns a descriptive error otherwise.
-// This function never writes or creates anything on disk.
+// Returns nil if the path is safe. Returns a descriptive error if any
+// security constraint is violated.
 //
-// Algorithm (spec §Contracts/Algorithm):
-//  1. Reject empty paths.
-//  2. Reject absolute paths: strings.HasPrefix(path, "/") catches Unix-style
-//     absolute paths on all platforms (including Windows, where filepath.IsAbs
-//     returns false for "/etc/passwd" without a drive letter). Also reject if
-//     the path contains ":" (Windows drive letter, e.g. "C:\...").
-//  3. Call filepath.Clean to normalize separators and resolve "." segments.
-//  4. Reject if any path component is ".." after cleaning.
-//  5. Resolve the full absolute path: abs = filepath.Join(projectRoot, cleaned).
-//  6. Call filepath.EvalSymlinks on abs; if the target does not exist yet,
-//     evaluate the longest existing prefix instead.
-//  7. Verify the resolved path starts with projectRoot. Reject if not.
+// Spec ref: ROOT/tech_design/internal/pathvalidation § "Interface"
 func ValidatePath(path string, projectRoot string) error {
-	// Step 1 — Reject empty paths.
+	// Step 1: Reject empty paths.
+	// Spec ref: ROOT/tech_design/internal/pathvalidation § "Algorithm" (1)
 	if path == "" {
-		return fmt.Errorf("path is empty")
+		return errors.New("path is empty")
 	}
 
-	// Step 2 — Reject absolute paths.
-	// strings.HasPrefix(path, "/") catches Unix-style absolute paths on every
-	// platform, including Windows where filepath.IsAbs returns false for paths
-	// like "/etc/passwd" that have no drive letter. filepath.IsAbs then catches
-	// any remaining OS-native absolute forms (e.g. "C:\..." on Windows, or a
-	// UNC path). The explicit colon guard covers Windows drive letters as
-	// required by the spec (e.g. "C:relative" where filepath.IsAbs is false).
-	if strings.HasPrefix(path, "/") || filepath.IsAbs(path) || strings.Contains(path, ":") {
+	// Step 2: Reject absolute paths.
+	// Use strings.HasPrefix to catch Unix-style absolute paths (e.g. /etc/passwd),
+	// including on Windows where filepath.IsAbs returns false for paths starting
+	// with "/" without a drive letter.
+	// Also reject paths containing ":" to catch Windows drive letters (e.g. C:\...).
+	// Spec ref: ROOT/tech_design/internal/pathvalidation § "Algorithm" (2)
+	if strings.HasPrefix(path, "/") || strings.HasPrefix(path, "\\") {
+		return fmt.Errorf("path is absolute: %s", path)
+	}
+	if strings.Contains(path, ":") {
 		return fmt.Errorf("path is absolute: %s", path)
 	}
 
-	// Step 3 — Normalize: resolve ".", duplicate separators, OS separators.
-	// filepath.Clean handles all of these. After this call the path uses the
-	// OS separator and has no redundant components.
+	// Step 3: Normalize separators and resolve "." segments via filepath.Clean.
+	// This defuses many encoding tricks and ensures consistent component-level
+	// inspection in step 4.
+	// Spec ref: ROOT/tech_design/internal/pathvalidation § "Algorithm" (3)
+	// OWASP ref: EXTERNAL/owasp-path-traversal § "Normalize before validating"
 	cleaned := filepath.Clean(path)
 
-	// Step 4 — Reject traversal components that survived cleaning.
-	// filepath.Clean collapses "a/../../b" to "../b", so a ".." component
-	// after cleaning is a real escape attempt.
+	// Step 4: Reject if any path component is ".." after cleaning.
+	// filepath.Clean resolves most traversal sequences, but an input of ".."
+	// or one that still starts with ".." after cleaning must be explicitly rejected.
+	// Spec ref: ROOT/tech_design/internal/pathvalidation § "Algorithm" (4)
 	for _, component := range strings.Split(cleaned, string(filepath.Separator)) {
 		if component == ".." {
 			return fmt.Errorf("path contains directory traversal: %s", path)
 		}
 	}
 
-	// Step 5 — Build the full absolute candidate path.
+	// Step 5: Resolve the full absolute path by joining with the project root.
+	// Spec ref: ROOT/tech_design/internal/pathvalidation § "Algorithm" (5)
 	abs := filepath.Join(projectRoot, cleaned)
 
-	// Step 6 — Resolve symlinks before the containment check.
-	// OWASP: a path that looks local may point outside the project via a
-	// symlink. filepath.EvalSymlinks resolves the chain completely.
-	//
-	// If the final target does not exist yet (e.g. a new file being created),
-	// EvalSymlinks returns an error. In that case we walk up to the longest
-	// existing prefix and evaluate that, then reattach the non-existent tail.
-	// This ensures symlinks in existing ancestor directories are still caught.
+	// Step 6: Resolve symlinks to catch paths that appear safe but resolve
+	// outside the project root via symlinks in the directory tree.
+	// If the target does not yet exist, evaluate the longest existing prefix.
+	// Spec ref: ROOT/tech_design/internal/pathvalidation § "Algorithm" (6)
+	// OWASP ref: EXTERNAL/owasp-path-traversal § "Resolve symlinks"
 	resolved, err := filepath.EvalSymlinks(abs)
 	if err != nil {
-		// The path (or part of it) does not exist yet — evaluate the longest
-		// existing prefix. Walk up the directory tree one component at a time.
-		resolved, err = evalExistingPrefix(abs)
+		// The full path does not exist yet — walk up to find the longest
+		// existing prefix and evaluate symlinks on that prefix.
+		resolved, err = evalSymlinksForLongestExistingPrefix(abs)
 		if err != nil {
-			// Even the root could not be evaluated; propagate the error.
+			// If we cannot determine a safe resolved prefix, reject the path.
 			return fmt.Errorf("path resolves outside project root: %s", path)
 		}
 	}
 
-	// Ensure projectRoot itself is in canonical, symlink-resolved form so that
-	// the string prefix check is reliable across platforms.
-	resolvedRoot, err := filepath.EvalSymlinks(projectRoot)
-	if err != nil {
-		// If projectRoot cannot be resolved it is a configuration problem;
-		// treat the path as unsafe.
-		return fmt.Errorf("path resolves outside project root: %s", path)
-	}
-
-	// Normalize both sides to use the same separator style.
-	resolved = filepath.Clean(resolved)
-	resolvedRoot = filepath.Clean(resolvedRoot)
-
-	// Step 7 — Containment check.
-	// The resolved path must start with resolvedRoot followed by a separator
-	// (or be exactly equal to it, though writing to the root itself is odd).
-	// Using strings.HasPrefix alone would accept "/project-evil" when root is
-	// "/project", so we append a separator to the root before comparing.
-	if !strings.HasPrefix(resolved, resolvedRoot+string(filepath.Separator)) &&
-		resolved != resolvedRoot {
+	// Step 7: Verify the resolved path starts with projectRoot.
+	// A trailing separator is appended to projectRoot to prevent a prefix like
+	// "/project-root-sibling" from matching "/project-root".
+	// Spec ref: ROOT/tech_design/internal/pathvalidation § "Algorithm" (7)
+	// OWASP ref: EXTERNAL/owasp-path-traversal § "Resolve and verify containment"
+	rootWithSep := filepath.Clean(projectRoot) + string(filepath.Separator)
+	// Also accept an exact match (resolved == projectRoot itself).
+	cleanRoot := filepath.Clean(projectRoot)
+	if resolved != cleanRoot && !strings.HasPrefix(resolved, rootWithSep) {
 		return fmt.Errorf("path resolves outside project root: %s", path)
 	}
 
 	return nil
 }
 
-// evalExistingPrefix resolves symlinks for the longest prefix of absPath that
-// actually exists on disk, then reattaches the remaining (non-existent) suffix.
-// This allows symlink detection in ancestor directories even when the final
-// file has not been created yet.
-func evalExistingPrefix(absPath string) (string, error) {
-	// Split the path into components and walk from the root down, evaluating
-	// each prefix until we find one that does not exist.
-	dir := absPath
-	var tail []string
+// evalSymlinksForLongestExistingPrefix walks up the directory tree of target
+// to find the longest prefix that exists on disk, resolves symlinks on that
+// prefix, and returns the reconstructed path.
+//
+// This is used when the full target path does not yet exist (e.g. the file
+// is about to be created) so that symlink attacks via existing ancestor
+// directories are still detected.
+//
+// Spec ref: ROOT/tech_design/internal/pathvalidation § "Algorithm" (6)
+func evalSymlinksForLongestExistingPrefix(target string) (string, error) {
+	// Collect path components from target down to root.
+	current := target
+	var suffix []string
 
 	for {
-		resolved, err := filepath.EvalSymlinks(dir)
-		if err == nil {
-			// This prefix exists and has been resolved. Reattach the tail.
-			parts := append([]string{resolved}, tail...)
-			return filepath.Join(parts...), nil
+		parent := filepath.Dir(current)
+		if parent == current {
+			// Reached the filesystem root without finding an existing path.
+			// Return the original target unchanged; the containment check in
+			// the caller will determine if it is safe.
+			return target, nil
 		}
 
-		if !os.IsNotExist(err) {
-			// Unexpected error (permission denied, etc.) — surface it.
-			return "", err
+		_, statErr := os.Lstat(current)
+		if statErr == nil {
+			// current exists — resolve symlinks on it and reattach the suffix.
+			resolved, err := filepath.EvalSymlinks(current)
+			if err != nil {
+				return "", err
+			}
+			// Reattach the non-existent suffix components.
+			result := filepath.Join(append([]string{resolved}, suffix...)...)
+			return result, nil
 		}
 
-		// The current prefix does not exist. Strip one component and retry.
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			// We have reached the filesystem root without finding an existing
-			// prefix. This should not happen in practice since projectRoot
-			// must exist, but guard against it.
-			return "", fmt.Errorf("no existing prefix found for %s", absPath)
-		}
-		// Prepend the stripped component to the tail we will reattach.
-		tail = append([]string{filepath.Base(dir)}, tail...)
-		dir = parent
+		// current does not exist — record its base name and try the parent.
+		suffix = append([]string{filepath.Base(current)}, suffix...)
+		current = parent
 	}
 }

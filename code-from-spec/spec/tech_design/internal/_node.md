@@ -1,6 +1,6 @@
 ---
-version: 8
-parent_version: 12
+version: 11
+parent_version: 14
 ---
 
 # ROOT/tech_design/internal
@@ -8,7 +8,7 @@ parent_version: 12
 ## Intent
 
 Internal packages for the tool. Contains shared utilities and
-mode implementations.
+tool implementations.
 
 ## Constraints
 

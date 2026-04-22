@@ -1,18 +1,8 @@
-// spec: TEST/tech_design/internal/pathvalidation@v7
+// spec: TEST/tech_design/internal/pathvalidation@v9
 
-// Package pathvalidation_test exercises ValidatePath against the cases
-// described in the spec leaf node. Each sub-test uses t.TempDir() as the
-// project root so tests are isolated and leave no artifacts on disk.
-//
-// Threat model (from spec parent node):
-//   - relative traversal:   ../../etc/passwd
-//   - embedded traversal:   internal/../../outside/file.go
-//   - OS-specific separators (backslash on Windows)
-//   - symlinks that escape the project root
-//
-// Prevention approach follows OWASP guidance:
-//   normalize first (filepath.Clean), then check for ".." components,
-//   then resolve symlinks and verify containment.
+// Package pathvalidation_test contains tests for the pathvalidation package.
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Context"
+// Each test uses t.TempDir() as the project root.
 package pathvalidation_test
 
 import (
@@ -25,180 +15,184 @@ import (
 	"github.com/CodeFromSpec/tool-subagent-mcp/internal/pathvalidation"
 )
 
-// run is a small helper that calls ValidatePath and checks whether the
-// returned error matches expectations. It keeps each test case concise.
-//
-//   - wantErr == false  → expect nil (happy path)
-//   - wantErr == true   → expect a non-nil error whose message contains errFragment
-func run(t *testing.T, path, root string, wantErr bool, errFragment string) {
-	t.Helper()
+// --- Happy Path Tests ---
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Happy Path"
 
-	err := pathvalidation.ValidatePath(path, root)
-
-	if !wantErr {
-		// Happy path: no error expected.
-		if err != nil {
-			t.Errorf("ValidatePath(%q, root) returned unexpected error: %v", path, err)
-		}
-		return
-	}
-
-	// Failure path: an error is required.
-	if err == nil {
-		t.Errorf("ValidatePath(%q, root) expected error containing %q, got nil", path, errFragment)
-		return
-	}
-	if !strings.Contains(err.Error(), errFragment) {
-		t.Errorf("ValidatePath(%q, root) error = %q; want substring %q", path, err.Error(), errFragment)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Happy Path
-// ---------------------------------------------------------------------------
-
-// TestHappyPath_SimpleRelative validates a typical relative source path.
-// Spec step: "Simple relative path — expect no error."
-func TestHappyPath_SimpleRelative(t *testing.T) {
+// TestSimpleRelativePath verifies that a normal relative path is accepted.
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Simple relative path"
+func TestSimpleRelativePath(t *testing.T) {
 	root := t.TempDir()
-	run(t, "internal/config/config.go", root, false, "")
-}
-
-// TestHappyPath_NestedPath validates a deeper relative path with two segments
-// before the filename.
-// Spec step: "Nested path — expect no error."
-func TestHappyPath_NestedPath(t *testing.T) {
-	root := t.TempDir()
-	run(t, "cmd/subagent-mcp/main.go", root, false, "")
-}
-
-// TestHappyPath_SingleFilename validates a bare filename with no directory
-// component.
-// Spec step: "Single filename — expect no error."
-func TestHappyPath_SingleFilename(t *testing.T) {
-	root := t.TempDir()
-	run(t, "main.go", root, false, "")
-}
-
-// TestHappyPath_DotSegment validates that a "." component in the middle of a
-// path is accepted — filepath.Clean collapses it to a normal path.
-// Spec step: "Path with dot segment — cleaned to internal/config/config.go."
-func TestHappyPath_DotSegment(t *testing.T) {
-	root := t.TempDir()
-	run(t, "internal/./config/config.go", root, false, "")
-}
-
-// ---------------------------------------------------------------------------
-// Edge Cases
-// ---------------------------------------------------------------------------
-
-// TestEdge_TrailingSlash validates that a path ending with "/" is accepted.
-// filepath.Clean strips trailing slashes, leaving a valid directory path.
-// Spec step: "Path with trailing slash — expect no error."
-func TestEdge_TrailingSlash(t *testing.T) {
-	root := t.TempDir()
-	run(t, "internal/config/", root, false, "")
-}
-
-// TestEdge_DuplicateSeparators validates that consecutive slashes are
-// collapsed by filepath.Clean and the result is accepted.
-// Spec step: "Path with duplicate separators — expect no error."
-func TestEdge_DuplicateSeparators(t *testing.T) {
-	root := t.TempDir()
-	run(t, "internal//config//config.go", root, false, "")
-}
-
-// ---------------------------------------------------------------------------
-// Failure Cases
-// ---------------------------------------------------------------------------
-
-// TestFail_EmptyPath validates that an empty string is rejected immediately.
-// Spec step: "Empty path — expect error containing 'path is empty'."
-func TestFail_EmptyPath(t *testing.T) {
-	root := t.TempDir()
-	run(t, "", root, true, "path is empty")
-}
-
-// TestFail_AbsoluteLeadingSlash validates that a Unix absolute path is
-// rejected as absolute.
-// Spec step: "Absolute path with leading slash — expect error containing
-// 'path is absolute'."
-func TestFail_AbsoluteLeadingSlash(t *testing.T) {
-	root := t.TempDir()
-	run(t, "/etc/passwd", root, true, "path is absolute")
-}
-
-// TestFail_AbsoluteDriveLetter validates that a Windows-style drive-letter
-// path is rejected as absolute even on non-Windows hosts (the colon check
-// must be OS-agnostic per the spec algorithm step 2).
-// Spec step: "Absolute path with drive letter — expect error containing
-// 'path is absolute'."
-func TestFail_AbsoluteDriveLetter(t *testing.T) {
-	root := t.TempDir()
-	// The raw string contains a backslash-separated Windows path.
-	// We use a raw literal to avoid Go escape confusion.
-	run(t, `C:\Windows\system32`, root, true, "path is absolute")
-}
-
-// TestFail_SimpleTraversal validates the canonical `../../` attack.
-// Spec step: "Simple traversal — expect error containing 'directory traversal'."
-func TestFail_SimpleTraversal(t *testing.T) {
-	root := t.TempDir()
-	run(t, "../../etc/passwd", root, true, "directory traversal")
-}
-
-// TestFail_EmbeddedTraversal validates traversal that is hidden inside an
-// otherwise plausible-looking path.
-// Spec step: "Embedded traversal — expect error containing 'directory traversal'."
-func TestFail_EmbeddedTraversal(t *testing.T) {
-	root := t.TempDir()
-	run(t, "internal/../../outside/file.go", root, true, "directory traversal")
-}
-
-// TestFail_SymlinkEscape validates that a symlink inside the project root
-// that resolves to a directory outside it is rejected.
-//
-// Setup: create a real directory outside the temp dir, then create a symlink
-// inside the temp dir pointing to that external directory. The tested path is
-// "<symlink>/file.go".
-//
-// Spec step: "Symlink escaping project root — expect error containing
-// 'resolves outside project root'."
-//
-// Skipped on platforms where os.Symlink is unavailable (e.g. Windows without
-// the SeCreateSymbolicLink privilege).
-func TestFail_SymlinkEscape(t *testing.T) {
-	// Create the external target outside the project root.
-	// We use a sibling temp dir so cleanup is automatic.
-	externalDir := t.TempDir()
-
-	// The project root is a separate temp dir.
-	root := t.TempDir()
-
-	// Place a symlink named "escape" inside root pointing at externalDir.
-	symlinkPath := filepath.Join(root, "escape")
-	err := os.Symlink(externalDir, symlinkPath)
+	err := pathvalidation.ValidatePath("internal/config/config.go", root)
 	if err != nil {
-		if runtime.GOOS == "windows" {
-			t.Skip("skipping symlink test: os.Symlink requires elevated privileges on Windows")
-		}
-		t.Fatalf("os.Symlink: %v", err)
+		t.Errorf("expected no error, got: %v", err)
 	}
-
-	// The path "escape/file.go" looks relative and clean, but its symlink
-	// resolves to a location outside root.
-	run(t, "escape/file.go", root, true, "resolves outside project root")
 }
 
-// TestFail_TraversalWithDotSegments validates that a disguised traversal using
-// embedded "." segments is still caught after filepath.Clean normalization.
-// Spec step: "Traversal disguised with dot segments — expect error containing
-// 'directory traversal'."
-func TestFail_TraversalWithDotSegments(t *testing.T) {
+// TestNestedPath verifies that a deeper nested relative path is accepted.
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Nested path"
+func TestNestedPath(t *testing.T) {
 	root := t.TempDir()
-	// "a/../../outside" has only one directory component before the two ".."
-	// segments, so filepath.Clean resolves it to "../outside" — a path that
-	// actually escapes the project root and retains a ".." component.
-	// ValidatePath must detect the ".." and return a directory traversal error.
-	run(t, "a/../../outside", root, true, "directory traversal")
+	err := pathvalidation.ValidatePath("cmd/subagent-mcp/main.go", root)
+	if err != nil {
+		t.Errorf("expected no error, got: %v", err)
+	}
+}
+
+// TestSingleFilename verifies that a simple filename with no directory is accepted.
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Single filename"
+func TestSingleFilename(t *testing.T) {
+	root := t.TempDir()
+	err := pathvalidation.ValidatePath("main.go", root)
+	if err != nil {
+		t.Errorf("expected no error, got: %v", err)
+	}
+}
+
+// TestPathWithDotSegment verifies that a path with a dot segment is accepted
+// after cleaning resolves it to a normal path.
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Path with dot segment"
+func TestPathWithDotSegment(t *testing.T) {
+	root := t.TempDir()
+	// "internal/./config/config.go" cleans to "internal/config/config.go"
+	err := pathvalidation.ValidatePath("internal/./config/config.go", root)
+	if err != nil {
+		t.Errorf("expected no error, got: %v", err)
+	}
+}
+
+// --- Edge Case Tests ---
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Edge Cases"
+
+// TestPathWithTrailingSlash verifies that a path ending with a slash is accepted.
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Path with trailing slash"
+func TestPathWithTrailingSlash(t *testing.T) {
+	root := t.TempDir()
+	err := pathvalidation.ValidatePath("internal/config/", root)
+	if err != nil {
+		t.Errorf("expected no error, got: %v", err)
+	}
+}
+
+// TestPathWithDuplicateSeparators verifies that duplicate separators are handled
+// gracefully by filepath.Clean.
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Path with duplicate separators"
+func TestPathWithDuplicateSeparators(t *testing.T) {
+	root := t.TempDir()
+	err := pathvalidation.ValidatePath("internal//config//config.go", root)
+	if err != nil {
+		t.Errorf("expected no error, got: %v", err)
+	}
+}
+
+// --- Failure Case Tests ---
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Failure Cases"
+
+// TestEmptyPath verifies that an empty path is rejected with the correct message.
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Empty path"
+func TestEmptyPath(t *testing.T) {
+	root := t.TempDir()
+	err := pathvalidation.ValidatePath("", root)
+	if err == nil {
+		t.Fatal("expected error for empty path, got nil")
+	}
+	if !strings.Contains(err.Error(), "path is empty") {
+		t.Errorf("expected error containing %q, got: %v", "path is empty", err)
+	}
+}
+
+// TestAbsolutePathWithLeadingSlash verifies that a Unix-style absolute path is rejected.
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Absolute path with leading slash"
+func TestAbsolutePathWithLeadingSlash(t *testing.T) {
+	root := t.TempDir()
+	err := pathvalidation.ValidatePath("/etc/passwd", root)
+	if err == nil {
+		t.Fatal("expected error for absolute path, got nil")
+	}
+	if !strings.Contains(err.Error(), "path is absolute") {
+		t.Errorf("expected error containing %q, got: %v", "path is absolute", err)
+	}
+}
+
+// TestAbsolutePathWithDriveLetter verifies that a Windows-style drive path is rejected.
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Absolute path with drive letter (Windows-style)"
+func TestAbsolutePathWithDriveLetter(t *testing.T) {
+	root := t.TempDir()
+	err := pathvalidation.ValidatePath(`C:\Windows\system32`, root)
+	if err == nil {
+		t.Fatal("expected error for drive-letter path, got nil")
+	}
+	if !strings.Contains(err.Error(), "path is absolute") {
+		t.Errorf("expected error containing %q, got: %v", "path is absolute", err)
+	}
+}
+
+// TestSimpleTraversal verifies that a leading traversal sequence is rejected.
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Simple traversal"
+func TestSimpleTraversal(t *testing.T) {
+	root := t.TempDir()
+	err := pathvalidation.ValidatePath("../../etc/passwd", root)
+	if err == nil {
+		t.Fatal("expected error for traversal path, got nil")
+	}
+	if !strings.Contains(err.Error(), "directory traversal") {
+		t.Errorf("expected error containing %q, got: %v", "directory traversal", err)
+	}
+}
+
+// TestEmbeddedTraversal verifies that a traversal sequence embedded in a path is rejected.
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Embedded traversal"
+func TestEmbeddedTraversal(t *testing.T) {
+	root := t.TempDir()
+	err := pathvalidation.ValidatePath("internal/../../outside/file.go", root)
+	if err == nil {
+		t.Fatal("expected error for embedded traversal path, got nil")
+	}
+	if !strings.Contains(err.Error(), "directory traversal") {
+		t.Errorf("expected error containing %q, got: %v", "directory traversal", err)
+	}
+}
+
+// TestSymlinkEscapingProjectRoot verifies that a symlink pointing outside the
+// project root is rejected.
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Symlink escaping project root"
+func TestSymlinkEscapingProjectRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Symlink creation on Windows typically requires elevated privileges;
+		// skip rather than fail to keep CI reliable on standard Windows runners.
+		t.Skip("skipping symlink test on Windows")
+	}
+
+	root := t.TempDir()
+	// outsideDir is outside the project root — use the OS temp dir's parent or
+	// another temp directory entirely.
+	outsideDir := t.TempDir()
+
+	// Create a symlink inside root that points to outsideDir.
+	symlinkPath := filepath.Join(root, "escape")
+	if err := os.Symlink(outsideDir, symlinkPath); err != nil {
+		t.Fatalf("failed to create symlink: %v", err)
+	}
+
+	// Attempt to validate a path through the symlink.
+	err := pathvalidation.ValidatePath("escape/file.go", root)
+	if err == nil {
+		t.Fatal("expected error for symlink escaping project root, got nil")
+	}
+	if !strings.Contains(err.Error(), "resolves outside project root") {
+		t.Errorf("expected error containing %q, got: %v", "resolves outside project root", err)
+	}
+}
+
+// TestTraversalDisguisedWithDotSegments verifies that a traversal hidden behind
+// dot segments is rejected after cleaning.
+// Spec ref: TEST/tech_design/internal/pathvalidation § "Traversal disguised with dot segments"
+func TestTraversalDisguisedWithDotSegments(t *testing.T) {
+	root := t.TempDir()
+	err := pathvalidation.ValidatePath("a/../../outside", root)
+	if err == nil {
+		t.Fatal("expected error for disguised traversal path, got nil")
+	}
+	if !strings.Contains(err.Error(), "directory traversal") {
+		t.Errorf("expected error containing %q, got: %v", "directory traversal", err)
+	}
 }

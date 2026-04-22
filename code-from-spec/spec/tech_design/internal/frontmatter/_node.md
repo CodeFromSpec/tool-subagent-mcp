@@ -1,6 +1,6 @@
 ---
-version: 25
-parent_version: 8
+version: 27
+parent_version: 11
 depends_on:
   - path: EXTERNAL/codefromspec
     version: 1

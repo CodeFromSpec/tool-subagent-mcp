@@ -1,11 +1,11 @@
 ---
-version: 6
-parent_version: 27
+version: 2
+parent_version: 29
 implements:
-  - internal/modes/codegen/write_file_test.go
+  - internal/write_file/write_file_test.go
 ---
 
-# TEST/tech_design/internal/modes/codegen/tools/write_file
+# TEST/tech_design/internal/tools/write_file
 
 ## Context
 

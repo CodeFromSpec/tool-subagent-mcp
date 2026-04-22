@@ -1,65 +1,75 @@
-// spec: ROOT/tech_design/internal/logical_names@v22
+// spec: ROOT/tech_design/internal/logical_names@v24
 
-// Package logicalnames centralizes conversion between logical names and
-// file paths, and provides parent-derivation utilities for the Code from
-// Spec node hierarchy.
+// Package logicalnames centralizes conversion between logical names and file
+// paths, as well as parent derivation for the Code from Spec spec tree.
 //
-// Logical name prefixes:
-//   - ROOT      — spec nodes  (code-from-spec/spec/**/_node.md)
-//   - TEST      — test nodes  (code-from-spec/spec/**/*.test.md)
-//   - EXTERNAL  — external dependencies (code-from-spec/external/**/_external.md)
+// Spec ref: ROOT/tech_design/internal/logical_names § "Intent"
 package logicalnames
 
 import (
 	"strings"
 )
 
-// PathFromLogicalName resolves a logical name to a file path relative to
-// the project root.
+// PathFromLogicalName resolves a logical name to a file path relative to the
+// project root. Returns (path, true) on success or ("", false) if the input
+// does not match any known pattern.
 //
-// Resolution rules (ref: ROOT/tech_design/internal/logical_names §PathFromLogicalName):
+// Spec ref: ROOT/tech_design/internal/logical_names § "PathFromLogicalName"
 //
-//	ROOT              → code-from-spec/spec/_node.md
-//	ROOT/<path>       → code-from-spec/spec/<path>/_node.md
-//	TEST              → code-from-spec/spec/default.test.md
-//	TEST/<path>       → code-from-spec/spec/<path>/default.test.md
-//	TEST/<path>(name) → code-from-spec/spec/<path>/<name>.test.md
-//	EXTERNAL/<name>   → code-from-spec/external/<name>/_external.md
-//
-// Returns ("", false) if the input does not match any known pattern.
+// Resolution rules:
+//   - ROOT                     → code-from-spec/spec/_node.md
+//   - ROOT/<path>              → code-from-spec/spec/<path>/_node.md
+//   - TEST                     → code-from-spec/spec/default.test.md
+//   - TEST/<path>              → code-from-spec/spec/<path>/default.test.md
+//   - TEST/<path>(<name>)      → code-from-spec/spec/<path>/<name>.test.md
+//   - EXTERNAL/<name>          → code-from-spec/external/<name>/_external.md
 func PathFromLogicalName(logicalName string) (string, bool) {
 	switch {
 	case logicalName == "ROOT":
-		// The root spec node.
+		// Spec ref: ROOT/tech_design/internal/logical_names § "PathFromLogicalName" table row ROOT
 		return "code-from-spec/spec/_node.md", true
 
 	case strings.HasPrefix(logicalName, "ROOT/"):
-		// e.g. ROOT/x/y → code-from-spec/spec/x/y/_node.md
-		rest := strings.TrimPrefix(logicalName, "ROOT/")
-		if rest == "" {
+		// Spec ref: ROOT/tech_design/internal/logical_names § "PathFromLogicalName" rule ROOT/<path>
+		path := strings.TrimPrefix(logicalName, "ROOT/")
+		if path == "" {
 			return "", false
 		}
-		return "code-from-spec/spec/" + rest + "/_node.md", true
+		return "code-from-spec/spec/" + path + "/_node.md", true
 
 	case logicalName == "TEST":
-		// Canonical test node at the spec root (edge case — unlikely in practice
-		// but consistent with the table in the spec).
+		// Spec ref: ROOT/tech_design/internal/logical_names § "PathFromLogicalName" table row TEST
 		return "code-from-spec/spec/default.test.md", true
 
 	case strings.HasPrefix(logicalName, "TEST/"):
-		// e.g. TEST/x/y          → code-from-spec/spec/x/y/default.test.md
-		//      TEST/x/y(name)    → code-from-spec/spec/x/y/name.test.md
+		// Spec ref: ROOT/tech_design/internal/logical_names § "PathFromLogicalName" rules TEST/<path> and TEST/<path>(<name>)
 		rest := strings.TrimPrefix(logicalName, "TEST/")
 		if rest == "" {
 			return "", false
 		}
-		return resolveTestPath(rest)
+		// Check for named test variant: TEST/<path>(<name>)
+		// The name is enclosed in parentheses at the end of the logical name.
+		if parenStart := strings.LastIndex(rest, "("); parenStart != -1 {
+			if strings.HasSuffix(rest, ")") {
+				path := rest[:parenStart]
+				name := rest[parenStart+1 : len(rest)-1]
+				if path == "" || name == "" {
+					return "", false
+				}
+				// Spec ref: TEST/<path>(<name>) → code-from-spec/spec/<path>/<name>.test.md
+				return "code-from-spec/spec/" + path + "/" + name + ".test.md", true
+			}
+			// Malformed: has '(' but not a closing ')'
+			return "", false
+		}
+		// Spec ref: TEST/<path> → code-from-spec/spec/<path>/default.test.md
+		return "code-from-spec/spec/" + rest + "/default.test.md", true
 
 	case strings.HasPrefix(logicalName, "EXTERNAL/"):
-		// e.g. EXTERNAL/celcoin-api → code-from-spec/external/celcoin-api/_external.md
+		// Spec ref: ROOT/tech_design/internal/logical_names § "PathFromLogicalName" rule EXTERNAL/<name>
 		name := strings.TrimPrefix(logicalName, "EXTERNAL/")
 		if name == "" || strings.Contains(name, "/") {
-			// EXTERNAL only supports a single-level name (no further slashes).
+			// EXTERNAL only supports a single-level name
 			return "", false
 		}
 		return "code-from-spec/external/" + name + "/_external.md", true
@@ -69,65 +79,35 @@ func PathFromLogicalName(logicalName string) (string, bool) {
 	}
 }
 
-// resolveTestPath converts the portion of a TEST logical name that follows
-// the "TEST/" prefix into a filesystem path.
-//
-// Input forms:
-//
-//	"x/y"        → "code-from-spec/spec/x/y/default.test.md"
-//	"x/y(name)"  → "code-from-spec/spec/x/y/name.test.md"
-func resolveTestPath(rest string) (string, bool) {
-	// Check for an explicit test name in parentheses at the end.
-	// e.g. "x/y(edge_cases)" — split on the last '('.
-	if idx := strings.LastIndex(rest, "("); idx != -1 {
-		// Must end with ')'.
-		if !strings.HasSuffix(rest, ")") {
-			return "", false
-		}
-		path := rest[:idx]        // everything before '('
-		name := rest[idx+1 : len(rest)-1] // content between '(' and ')'
-		if path == "" || name == "" {
-			return "", false
-		}
-		return "code-from-spec/spec/" + path + "/" + name + ".test.md", true
-	}
-
-	// No explicit name — use the default test file name.
-	return "code-from-spec/spec/" + rest + "/default.test.md", true
-}
-
 // HasParent determines whether a logical name has a parent node.
+// Returns (hasParent, ok) where ok indicates whether the input is a valid
+// logical name.
 //
-// Returns (hasParent, ok) where ok indicates whether the input is a
-// valid logical name at all.
+// Spec ref: ROOT/tech_design/internal/logical_names § "HasParent"
 //
-// Rules (ref: ROOT/tech_design/internal/logical_names §HasParent):
-//
-//	ROOT              → (false, true)   — root has no parent
-//	ROOT/<path>       → (true,  true)
-//	TEST              → (true,  true)   — parent is ROOT
-//	TEST/<path>       → (true,  true)
-//	TEST/<path>(name) → (true,  true)
-//	EXTERNAL/<name>   → (false, true)   — externals have no parent
-//	EXTERNAL          → (false, false)  — bare EXTERNAL is not valid
-//	""                → (false, false)
+// Rules:
+//   - ROOT                         → (false, true)   — no parent
+//   - ROOT/<path>                  → (true,  true)   — has parent
+//   - TEST                         → (true,  true)   — parent is ROOT
+//   - TEST/<path>                  → (true,  true)   — parent is ROOT/<path>
+//   - TEST/<path>(<name>)          → (true,  true)   — parent is ROOT/<path>
+//   - EXTERNAL/<name>              → (false, true)   — no parent
+//   - EXTERNAL (bare)              → (false, false)  — invalid
+//   - "" or anything else          → (false, false)  — invalid
 func HasParent(logicalName string) (hasParent, ok bool) {
 	switch {
-	case logicalName == "":
-		return false, false
-
 	case logicalName == "ROOT":
 		return false, true
 
 	case strings.HasPrefix(logicalName, "ROOT/"):
-		rest := strings.TrimPrefix(logicalName, "ROOT/")
-		if rest == "" {
+		path := strings.TrimPrefix(logicalName, "ROOT/")
+		if path == "" {
 			return false, false
 		}
 		return true, true
 
 	case logicalName == "TEST":
-		// TEST without a path — its parent is ROOT.
+		// Spec ref: HasParent table — TEST → hasParent=true, ok=true
 		return true, true
 
 	case strings.HasPrefix(logicalName, "TEST/"):
@@ -135,10 +115,21 @@ func HasParent(logicalName string) (hasParent, ok bool) {
 		if rest == "" {
 			return false, false
 		}
+		// Validate: if parentheses are present they must be well-formed at the end.
+		if parenStart := strings.LastIndex(rest, "("); parenStart != -1 {
+			if !strings.HasSuffix(rest, ")") {
+				return false, false
+			}
+			name := rest[parenStart+1 : len(rest)-1]
+			path := rest[:parenStart]
+			if path == "" || name == "" {
+				return false, false
+			}
+		}
 		return true, true
 
 	case logicalName == "EXTERNAL":
-		// Bare "EXTERNAL" is not a valid logical name.
+		// Spec ref: HasParent table — EXTERNAL (bare) → ok=false
 		return false, false
 
 	case strings.HasPrefix(logicalName, "EXTERNAL/"):
@@ -146,7 +137,7 @@ func HasParent(logicalName string) (hasParent, ok bool) {
 		if name == "" || strings.Contains(name, "/") {
 			return false, false
 		}
-		// External dependencies have no parent in the spec tree.
+		// Spec ref: HasParent table — EXTERNAL/<name> → hasParent=false, ok=true
 		return false, true
 
 	default:
@@ -154,55 +145,58 @@ func HasParent(logicalName string) (hasParent, ok bool) {
 	}
 }
 
-// ParentLogicalName derives the parent's logical name from a node's
-// logical name.
+// ParentLogicalName derives the parent's logical name from a node's logical
+// name. Returns (parent, true) on success, or ("", false) if the node has no
+// parent. Only call after confirming HasParent returns true.
 //
-// Returns (parent, true) on success, ("", false) if the node has no
-// parent. The caller should confirm HasParent returns (true, true)
-// before calling this function.
+// Spec ref: ROOT/tech_design/internal/logical_names § "ParentLogicalName"
 //
-// Rules (ref: ROOT/tech_design/internal/logical_names §ParentLogicalName):
-//
-//	ROOT/x          → ROOT
-//	ROOT/x/y        → ROOT/x
-//	TEST            → ROOT
-//	TEST/x          → ROOT/x
-//	TEST/x(name)    → ROOT/x
+// Rules:
+//   - ROOT/<path>         → strip last segment; if one segment remains, parent is ROOT
+//   - TEST                → ROOT
+//   - TEST/<path>         → ROOT/<path>
+//   - TEST/<path>(<name>) → ROOT/<path>
 func ParentLogicalName(logicalName string) (string, bool) {
 	switch {
+	case strings.HasPrefix(logicalName, "ROOT/"):
+		// Spec ref: ParentLogicalName rule ROOT/<path>
+		path := strings.TrimPrefix(logicalName, "ROOT/")
+		if path == "" {
+			return "", false
+		}
+		lastSlash := strings.LastIndex(path, "/")
+		if lastSlash == -1 {
+			// Only one segment: parent is ROOT
+			return "ROOT", true
+		}
+		return "ROOT/" + path[:lastSlash], true
+
 	case logicalName == "TEST":
-		// TEST with no path — parent is always the spec root.
+		// Spec ref: ParentLogicalName table — TEST → ROOT
 		return "ROOT", true
 
 	case strings.HasPrefix(logicalName, "TEST/"):
+		// Spec ref: ParentLogicalName rules TEST/<path> and TEST/<path>(<name>)
 		rest := strings.TrimPrefix(logicalName, "TEST/")
 		if rest == "" {
 			return "", false
 		}
-		// Strip any trailing (name) suffix — the parent is always a ROOT node.
-		if idx := strings.LastIndex(rest, "("); idx != -1 {
-			rest = rest[:idx]
+		// Strip named variant suffix (<name>) if present.
+		if parenStart := strings.LastIndex(rest, "("); parenStart != -1 {
+			if strings.HasSuffix(rest, ")") {
+				rest = rest[:parenStart]
+			} else {
+				return "", false
+			}
 		}
 		if rest == "" {
 			return "", false
 		}
+		// TEST/<path> → ROOT/<path>
 		return "ROOT/" + rest, true
 
-	case strings.HasPrefix(logicalName, "ROOT/"):
-		rest := strings.TrimPrefix(logicalName, "ROOT/")
-		if rest == "" {
-			return "", false
-		}
-		// Strip the last path segment to find the parent.
-		if idx := strings.LastIndex(rest, "/"); idx != -1 {
-			// There is at least one more segment — parent is ROOT/<rest up to last />.
-			return "ROOT/" + rest[:idx], true
-		}
-		// Only one segment left — parent is ROOT itself.
-		return "ROOT", true
-
 	default:
-		// ROOT, EXTERNAL/*, and anything invalid have no parent.
+		// No parent (ROOT, EXTERNAL/*, or invalid).
 		return "", false
 	}
 }

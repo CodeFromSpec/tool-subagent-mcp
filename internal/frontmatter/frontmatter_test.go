@@ -1,43 +1,40 @@
-// spec: TEST/tech_design/internal/frontmatter@v8
+// spec: TEST/tech_design/internal/frontmatter@v10
 
-// Package frontmatter — tests for ParseFrontmatter.
+// Package frontmatter_test exercises ParseFrontmatter against all scenarios
+// described in TEST/tech_design/internal/frontmatter (default.test.md).
 //
-// Each test uses t.TempDir() to create an isolated temporary directory.
-// Test files are written with controlled frontmatter content.
-// ParseFrontmatter is called with the path to each test file and the
-// result is verified against the spec scenarios defined in default.test.md.
-//
-// No test framework beyond the standard "testing" package is used, per the
-// constraint in ROOT/tech_design.
+// Each test creates an isolated temp directory via t.TempDir(), writes a
+// controlled file, and asserts on the returned *Frontmatter or error.
+// No external test framework is used — only the standard "testing" package.
+// (Spec ref: ROOT/tech_design § "Constraints")
 package frontmatter
 
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-// writeFile is a helper that creates a file inside dir with the given content.
-// It returns the full path to the created file.
+// ---- helpers ----------------------------------------------------------------
+
+// writeFile creates a file with the given content inside dir and returns the
+// full path.
 func writeFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("writeFile: %v", err)
 	}
 	return path
 }
 
-// ---------------------------------------------------------------------------
-// Happy Path
-// ---------------------------------------------------------------------------
+// ---- Happy Path -------------------------------------------------------------
 
-// TestParseFrontmatter_CompleteFields covers the happy path where all
-// recognised fields (depends_on with and without filter, implements) are
-// present in the frontmatter.
-//
-// Spec ref: "Parses complete frontmatter"
-func TestParseFrontmatter_CompleteFields(t *testing.T) {
+// TestParsesCompleteFrontmatter verifies that all supported fields are parsed
+// correctly when present.
+// Spec ref: TEST/tech_design/internal/frontmatter § "Parses complete frontmatter"
+func TestParsesCompleteFrontmatter(t *testing.T) {
 	dir := t.TempDir()
 	content := `---
 version: 3
@@ -53,7 +50,7 @@ implements:
   - internal/config/config.go
   - internal/config/config_test.go
 ---
-# body is ignored
+Some body text that must not be read.
 `
 	path := writeFile(t, dir, "node.md", content)
 
@@ -62,48 +59,43 @@ implements:
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify depends_on — two entries expected.
-	if len(fm.DependsOn) != 2 {
-		t.Fatalf("DependsOn: want 2 entries, got %d", len(fm.DependsOn))
+	// Spec ref: TEST § "Parses complete frontmatter" — DependsOn has two entries.
+	if got := len(fm.DependsOn); got != 2 {
+		t.Fatalf("DependsOn length: got %d, want 2", got)
 	}
 
-	// First entry: ROOT/other, no filter.
+	// First entry: LogicalName = "ROOT/other", Filter = nil
 	if fm.DependsOn[0].LogicalName != "ROOT/other" {
-		t.Errorf("DependsOn[0].LogicalName: want %q, got %q", "ROOT/other", fm.DependsOn[0].LogicalName)
+		t.Errorf("DependsOn[0].LogicalName = %q, want %q", fm.DependsOn[0].LogicalName, "ROOT/other")
 	}
 	if fm.DependsOn[0].Filter != nil {
-		t.Errorf("DependsOn[0].Filter: want nil, got %v", fm.DependsOn[0].Filter)
+		t.Errorf("DependsOn[0].Filter = %v, want nil", fm.DependsOn[0].Filter)
 	}
 
-	// Second entry: EXTERNAL/database, with one filter glob.
+	// Second entry: LogicalName = "EXTERNAL/database", Filter = ["schema/*.sql"]
 	if fm.DependsOn[1].LogicalName != "EXTERNAL/database" {
-		t.Errorf("DependsOn[1].LogicalName: want %q, got %q", "EXTERNAL/database", fm.DependsOn[1].LogicalName)
+		t.Errorf("DependsOn[1].LogicalName = %q, want %q", fm.DependsOn[1].LogicalName, "EXTERNAL/database")
 	}
 	if len(fm.DependsOn[1].Filter) != 1 || fm.DependsOn[1].Filter[0] != "schema/*.sql" {
-		t.Errorf("DependsOn[1].Filter: want [schema/*.sql], got %v", fm.DependsOn[1].Filter)
+		t.Errorf("DependsOn[1].Filter = %v, want [schema/*.sql]", fm.DependsOn[1].Filter)
 	}
 
-	// Verify implements — two file paths expected.
-	wantImpl := []string{
-		"internal/config/config.go",
-		"internal/config/config_test.go",
-	}
+	// Implements = ["internal/config/config.go", "internal/config/config_test.go"]
+	wantImpl := []string{"internal/config/config.go", "internal/config/config_test.go"}
 	if len(fm.Implements) != len(wantImpl) {
-		t.Fatalf("Implements: want %d entries, got %d", len(wantImpl), len(fm.Implements))
+		t.Fatalf("Implements length: got %d, want %d", len(fm.Implements), len(wantImpl))
 	}
 	for i, want := range wantImpl {
 		if fm.Implements[i] != want {
-			t.Errorf("Implements[%d]: want %q, got %q", i, want, fm.Implements[i])
+			t.Errorf("Implements[%d] = %q, want %q", i, fm.Implements[i], want)
 		}
 	}
 }
 
-// TestParseFrontmatter_OnlyImplements verifies that a file containing only
-// the implements field (no depends_on) is parsed correctly, with DependsOn
-// being nil.
-//
-// Spec ref: "Parses frontmatter with only implements"
-func TestParseFrontmatter_OnlyImplements(t *testing.T) {
+// TestParsesOnlyImplements verifies that a file with only implements is parsed
+// correctly and DependsOn is nil.
+// Spec ref: TEST § "Parses frontmatter with only implements"
+func TestParsesOnlyImplements(t *testing.T) {
 	dir := t.TempDir()
 	content := `---
 version: 1
@@ -119,23 +111,18 @@ implements:
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// DependsOn must be nil — it was not declared in the frontmatter.
 	if fm.DependsOn != nil {
-		t.Errorf("DependsOn: want nil, got %v", fm.DependsOn)
+		t.Errorf("DependsOn = %v, want nil", fm.DependsOn)
 	}
-
-	// Implements must have exactly one entry.
 	if len(fm.Implements) != 1 || fm.Implements[0] != "internal/config/config.go" {
-		t.Errorf("Implements: want [internal/config/config.go], got %v", fm.Implements)
+		t.Errorf("Implements = %v, want [internal/config/config.go]", fm.Implements)
 	}
 }
 
-// TestParseFrontmatter_NoRelevantFields verifies that a frontmatter block
-// containing only untracked fields (e.g. version) returns zero-value slices
-// with no error.
-//
-// Spec ref: "Parses frontmatter with no relevant fields"
-func TestParseFrontmatter_NoRelevantFields(t *testing.T) {
+// TestParsesNoRelevantFields verifies that a file with only version produces
+// nil DependsOn and nil Implements without error.
+// Spec ref: TEST § "Parses frontmatter with no relevant fields"
+func TestParsesNoRelevantFields(t *testing.T) {
 	dir := t.TempDir()
 	content := `---
 version: 5
@@ -147,20 +134,18 @@ version: 5
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
 	if fm.DependsOn != nil {
-		t.Errorf("DependsOn: want nil, got %v", fm.DependsOn)
+		t.Errorf("DependsOn = %v, want nil", fm.DependsOn)
 	}
 	if fm.Implements != nil {
-		t.Errorf("Implements: want nil, got %v", fm.Implements)
+		t.Errorf("Implements = %v, want nil", fm.Implements)
 	}
 }
 
-// TestParseFrontmatter_UnknownFieldsIgnored verifies that extra, unrecognised
-// YAML keys in the frontmatter are silently ignored and do not cause an error.
-//
-// Spec ref: "Ignores unknown frontmatter fields"
-func TestParseFrontmatter_UnknownFieldsIgnored(t *testing.T) {
+// TestIgnoresUnknownFields verifies that extra/future YAML fields do not cause
+// an error and that known fields are still parsed correctly.
+// Spec ref: TEST § "Ignores unknown frontmatter fields"
+func TestIgnoresUnknownFields(t *testing.T) {
 	dir := t.TempDir()
 	content := `---
 version: 1
@@ -171,148 +156,107 @@ another: 42
 `
 	path := writeFile(t, dir, "node.md", content)
 
-	fm, err := ParseFrontmatter(path)
+	_, err := ParseFrontmatter(path)
 	if err != nil {
 		t.Fatalf("unexpected error for unknown fields: %v", err)
 	}
-
-	// Known fields that were absent must still be nil/zero.
-	if fm.DependsOn != nil {
-		t.Errorf("DependsOn: want nil, got %v", fm.DependsOn)
-	}
-	if fm.Implements != nil {
-		t.Errorf("Implements: want nil, got %v", fm.Implements)
-	}
 }
 
-// ---------------------------------------------------------------------------
-// Edge Cases
-// ---------------------------------------------------------------------------
+// ---- Edge Cases -------------------------------------------------------------
 
-// TestParseFrontmatter_EmptyFrontmatter verifies that a file whose frontmatter
-// block contains no content at all (consecutive --- delimiters) returns a
-// zero-value Frontmatter with no error.
-//
-// Spec ref: "Empty frontmatter"
-func TestParseFrontmatter_EmptyFrontmatter(t *testing.T) {
+// TestEmptyFrontmatter verifies that a file with an empty YAML block (--- ---)
+// produces all-nil fields and no error.
+// Spec ref: TEST § "Empty frontmatter"
+func TestEmptyFrontmatter(t *testing.T) {
 	dir := t.TempDir()
-	// Two consecutive delimiter lines — the frontmatter block is empty.
 	content := "---\n---\n"
 	path := writeFile(t, dir, "node.md", content)
 
 	fm, err := ParseFrontmatter(path)
 	if err != nil {
-		t.Fatalf("unexpected error for empty frontmatter: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-
 	if fm.DependsOn != nil {
-		t.Errorf("DependsOn: want nil, got %v", fm.DependsOn)
+		t.Errorf("DependsOn = %v, want nil", fm.DependsOn)
 	}
 	if fm.Implements != nil {
-		t.Errorf("Implements: want nil, got %v", fm.Implements)
+		t.Errorf("Implements = %v, want nil", fm.Implements)
 	}
 }
 
-// TestParseFrontmatter_OnlyFrontmatterNoBody verifies that a file whose
-// content ends immediately after the closing delimiter (no body) is parsed
-// without error. The body is never read per the efficiency contract.
-//
-// Spec ref: "File with only frontmatter, nothing after"
-func TestParseFrontmatter_OnlyFrontmatterNoBody(t *testing.T) {
+// TestOnlyFrontmatterNoBody verifies that a file which ends immediately after
+// the closing delimiter parses without error.
+// Spec ref: TEST § "File with only frontmatter, nothing after"
+func TestOnlyFrontmatterNoBody(t *testing.T) {
 	dir := t.TempDir()
-	content := "---\nversion: 1\n---"
+	content := "---\nversion: 1\n---\n"
 	path := writeFile(t, dir, "node.md", content)
 
 	_, err := ParseFrontmatter(path)
 	if err != nil {
-		t.Fatalf("unexpected error for file with no body: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Failure Cases
-// ---------------------------------------------------------------------------
+// ---- Failure Cases ----------------------------------------------------------
 
-// TestParseFrontmatter_FileNotExist verifies that calling ParseFrontmatter
-// with a path that does not exist returns an error that contains the path.
-//
-// Spec ref: "File does not exist"
-func TestParseFrontmatter_FileNotExist(t *testing.T) {
-	nonExistent := filepath.Join(t.TempDir(), "does_not_exist.md")
+// TestFileDoesNotExist verifies that a non-existent path returns an error that
+// contains the file path.
+// Spec ref: TEST § "File does not exist"
+// Spec ref: ROOT/tech_design/internal/frontmatter § "Error handling"
+//   — "error reading <path>: <underlying error>"
+func TestFileDoesNotExist(t *testing.T) {
+	dir := t.TempDir()
+	nonexistent := filepath.Join(dir, "does_not_exist.md")
 
-	_, err := ParseFrontmatter(nonExistent)
+	_, err := ParseFrontmatter(nonexistent)
 	if err == nil {
-		t.Fatal("expected an error for non-existent file, got nil")
+		t.Fatal("expected error for non-existent file, got nil")
 	}
-
-	// The error message must mention the file path so callers can diagnose
-	// which file caused the failure.
-	if !containsString(err.Error(), nonExistent) {
-		t.Errorf("error %q does not contain path %q", err.Error(), nonExistent)
+	if !strings.Contains(err.Error(), nonexistent) {
+		t.Errorf("error %q does not contain path %q", err.Error(), nonexistent)
 	}
 }
 
-// TestParseFrontmatter_NoDelimiters verifies that a file with no "---"
-// delimiters at all returns an error indicating that frontmatter was not found.
-//
-// Spec ref: "No frontmatter delimiters"
-func TestParseFrontmatter_NoDelimiters(t *testing.T) {
+// TestNoFrontmatterDelimiters verifies that a file with no "---" lines returns
+// an error indicating frontmatter was not found.
+// Spec ref: TEST § "No frontmatter delimiters"
+// Spec ref: ROOT/tech_design/internal/frontmatter § "Error handling"
+//   — "frontmatter not found in <path>"
+func TestNoFrontmatterDelimiters(t *testing.T) {
 	dir := t.TempDir()
 	content := "Just some text.\n"
 	path := writeFile(t, dir, "node.md", content)
 
 	_, err := ParseFrontmatter(path)
 	if err == nil {
-		t.Fatal("expected an error for file with no frontmatter delimiters, got nil")
+		t.Fatal("expected error for missing frontmatter, got nil")
 	}
-
-	// The error must signal that frontmatter was not found.
-	if !containsString(err.Error(), "frontmatter not found") {
-		t.Errorf("error %q does not indicate frontmatter not found", err.Error())
+	// Error must indicate frontmatter not found and include the path.
+	if !strings.Contains(err.Error(), "frontmatter not found") {
+		t.Errorf("error %q does not contain 'frontmatter not found'", err.Error())
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Errorf("error %q does not contain path %q", err.Error(), path)
 	}
 }
 
-// TestParseFrontmatter_MalformedYAML verifies that invalid YAML between the
-// frontmatter delimiters causes a parse error.
-//
-// Spec ref: "Malformed YAML in frontmatter"
-func TestParseFrontmatter_MalformedYAML(t *testing.T) {
+// TestMalformedYAML verifies that invalid YAML inside the frontmatter block
+// returns an error indicating a parse failure.
+// Spec ref: TEST § "Malformed YAML in frontmatter"
+// Spec ref: ROOT/tech_design/internal/frontmatter § "Error handling"
+//   — "error parsing frontmatter in <path>: <underlying error>"
+func TestMalformedYAML(t *testing.T) {
 	dir := t.TempDir()
-	// "version: [invalid" is not valid YAML — the list is never closed.
 	content := "---\nversion: [invalid\n---\n"
 	path := writeFile(t, dir, "node.md", content)
 
 	_, err := ParseFrontmatter(path)
 	if err == nil {
-		t.Fatal("expected a parse error for malformed YAML, got nil")
+		t.Fatal("expected error for malformed YAML, got nil")
 	}
-
-	// The error must mention parsing failure (not a read error).
-	if !containsString(err.Error(), "error parsing frontmatter") {
-		t.Errorf("error %q does not indicate parse failure", err.Error())
+	// Error must reference the path and indicate a parsing problem.
+	if !strings.Contains(err.Error(), path) {
+		t.Errorf("error %q does not contain path %q", err.Error(), path)
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-// containsString reports whether substr appears anywhere in s.
-// Using a simple contains check avoids importing "strings" at the test level
-// while keeping error assertions readable.
-func containsString(s, substr string) bool {
-	return len(s) >= len(substr) && findSubstr(s, substr)
-}
-
-// findSubstr performs a linear scan to locate substr within s.
-func findSubstr(s, substr string) bool {
-	if len(substr) == 0 {
-		return true
-	}
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

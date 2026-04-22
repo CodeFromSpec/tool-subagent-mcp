@@ -1,6 +1,6 @@
 ---
-version: 8
-parent_version: 25
+version: 10
+parent_version: 27
 implements:
   - internal/frontmatter/frontmatter_test.go
 ---

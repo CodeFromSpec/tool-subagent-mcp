@@ -1,17 +1,14 @@
 ---
-version: 18
-parent_version: 37
-depends_on:
-  - path: ROOT/domain/modes/codegen
-    version: 21
+version: 3
+parent_version: 11
 ---
 
-# ROOT/tech_design/internal/modes/codegen/tools
+# ROOT/tech_design/internal/tools
 
 ## Intent
 
-Technical context shared by both codegen tool handlers: how to
-return results and errors.
+Technical context shared by all tool handlers: how to return
+results and errors.
 
 ## Contracts
 
@@ -45,8 +42,19 @@ Error messages returned to the agent must be actionable: they must
 identify what went wrong and what the agent can do about it (or
 indicate that the error is unrecoverable).
 
+### Path validation
+
+File paths from `implements` are validated using `ValidatePath`
+in both `load_chain` and `write_file` before any write.
+Each handler resolves the frontmatter independently and
+validates the paths against the working directory.
+
 ## Constraints
 
+- Tool handlers must be stateless — each call resolves its
+  own inputs independently. The MCP host (e.g. Claude Code)
+  keeps a single server process for the entire session, and
+  multiple subagents may call tools on it concurrently.
 - Tool handlers receive `context.Context`, `*mcp.CallToolRequest`,
   and a typed args struct, and return
   `(*mcp.CallToolResult, any, error)`. The returned Go error

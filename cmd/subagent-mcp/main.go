@@ -1,126 +1,85 @@
-// spec: ROOT/tech_design/server@v26
-
-// Package main is the entry point for the subagent-mcp binary.
-//
-// It reads the first CLI argument to determine the mode, sets up the
-// corresponding MCP server via that mode's Setup function, and runs
-// the server over stdin/stdout using the MCP stdio transport.
-//
-// Invocation:
-//
-//	subagent-mcp <mode> [args...]
-//
-// Currently supported modes:
-//   - codegen: Generate code for a spec or test node.
-//
-// Error handling follows the spec contract:
-//   - Startup errors (missing/invalid mode, failed Setup) → stderr + exit 1.
-//   - Tool errors are returned as MCP tool error responses (server keeps running).
+// spec: ROOT/tech_design/server@v30
 package main
+
+// Entry point for the subagent-mcp MCP server.
+//
+// Spec ref: ROOT/tech_design/server § "Startup sequence"
+//   1. Handle --help / -h / help  → print usage to stdout, exit 0.
+//   2. Any other argument         → print usage to stderr, exit 1.
+//   3. Create MCP server with Implementation.Name = "subagent-mcp".
+//   4. Register load_chain and write_file tools via mcp.AddTool.
+//   5. Run the server over stdio.
+//   6. On Run error → print to stderr, exit 1.
 
 import (
 	"context"
 	"fmt"
 	"os"
 
+	"github.com/CodeFromSpec/tool-subagent-mcp/internal/load_chain"
+	"github.com/CodeFromSpec/tool-subagent-mcp/internal/write_file"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-
-	"github.com/CodeFromSpec/tool-subagent-mcp/internal/modes/codegen"
 )
 
-// usageMessage is the top-level help text printed when no mode is given,
-// an unrecognized mode is given, or --help/-h/help is passed as the first
-// argument. It lists every available mode.
+// usageMessage is printed on --help/-h/help (stdout, exit 0) and on an
+// unrecognised argument (stderr, exit 1).
 //
 // Spec ref: ROOT/tech_design/server § "Usage message"
-const usageMessage = `Usage: subagent-mcp <mode> [args...]
+const usageMessage = `Usage: subagent-mcp
 
-Modes:
-  codegen   Start the codegen MCP server.
+Starts an MCP server over stdin/stdout for Code from Spec
+subagents.
 
-Run subagent-mcp <mode> --help for mode-specific help.
+Tools:
+  load_chain     Load the spec chain for a node.
+  write_file     Write a generated file to disk.
+
+The subagent should have no other tools available — no file
+read, write, or search capabilities beyond what this server
+provides. This confinement ensures the subagent works only
+from the provided context and writes only to declared outputs.
+
+MCP configuration example:
+  {
+    "mcpServers": {
+      "subagent-mcp": {
+        "type": "stdio",
+        "command": "<path-to-binary>"
+      }
+    }
+  }
 `
 
 func main() {
-	os.Exit(run())
-}
-
-// run contains the full startup sequence so main can delegate and still use
-// os.Exit cleanly. Returns the exit code (0 = success, 1 = error).
-//
-// Startup sequence (spec ref: ROOT/tech_design/server § "Startup sequence"):
-//  1. Validate that a mode argument was provided.
-//  2. Handle top-level help flags.
-//  3. Dispatch to the matching mode.
-//  4. Call Setup; abort on error.
-//  5. Run the MCP server over stdio.
-func run() int {
-	// Step 1: Require at least one argument (the mode name).
-	if len(os.Args) < 2 || os.Args[1] == "" {
-		fmt.Fprint(os.Stderr, usageMessage)
-		return 1
-	}
-
-	mode := os.Args[1]
-
-	// Step 2: Handle top-level help — print to stdout and exit 0.
-	if mode == "--help" || mode == "-h" || mode == "help" {
-		fmt.Print(usageMessage)
-		return 0
-	}
-
-	// Step 3: Dispatch to the recognized mode.
-	// Each branch may inspect os.Args[2:] for mode-specific help before
-	// delegating further argument handling to Setup.
-	var s *mcp.Server
-
-	switch mode {
-	case "codegen":
-		// Step 3a: Check for mode-level help before doing any setup work.
-		if len(os.Args) > 2 && isHelpFlag(os.Args[2]) {
-			fmt.Print(codegen.HelpMessage())
-			return 0
+	// Spec ref: ROOT/tech_design/server § "Startup sequence" steps 1–2.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--help", "-h", "help":
+			// Help flags: print usage to stdout and exit cleanly.
+			fmt.Print(usageMessage)
+			os.Exit(0)
+		default:
+			// Any other argument is an error: print usage to stderr and exit 1.
+			fmt.Fprint(os.Stderr, usageMessage)
+			os.Exit(1)
 		}
-
-		// Step 3b: Create the MCP server with the codegen instructions so the
-		// subagent understands how to interact with the server from the start.
-		// The Instructions constant is defined in the codegen package
-		// (spec ref: ROOT/tech_design/internal/modes/codegen § "Server instructions").
-		s = mcp.NewServer(&mcp.Implementation{
-			Name: "subagent-mcp",
-		}, &mcp.ServerOptions{
-			Instructions: codegen.Instructions,
-		})
-
-		// Step 3c: Let the codegen mode register its tools and validate args.
-		// os.Args[2:] contains everything after "codegen" (e.g. the logical name).
-		if err := codegen.Setup(s, os.Args[2:]); err != nil {
-			// Step 4: Setup failed → report to stderr and exit 1.
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			return 1
-		}
-
-	default:
-		// Unrecognized mode — print usage listing valid modes and exit 1.
-		fmt.Fprintf(os.Stderr, "error: unknown mode %q\n\n", mode)
-		fmt.Fprint(os.Stderr, usageMessage)
-		return 1
 	}
 
-	// Step 5: Run the MCP server over stdio. Blocks until the client disconnects.
-	// spec ref: ROOT/tech_design/server § "Startup sequence" step 5
+	// Spec ref: ROOT/tech_design/server § "Startup sequence" step 3.
+	// Create the MCP server with the required implementation name.
+	s := mcp.NewServer(&mcp.Implementation{
+		Name: "subagent-mcp",
+	}, nil)
+
+	// Spec ref: ROOT/tech_design/server § "Startup sequence" step 4.
+	// Register tools. Each package exposes its own registration function.
+	load_chain.RegisterTool(s)
+	write_file.Register(s)
+
+	// Spec ref: ROOT/tech_design/server § "Startup sequence" steps 5–7.
+	// Run blocks until the client disconnects. Any error is fatal.
 	if err := s.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
-		// Step 6: Server error → report to stderr and exit 1.
-		fmt.Fprintf(os.Stderr, "error: server exited with error: %v\n", err)
-		return 1
+		fmt.Fprintf(os.Stderr, "subagent-mcp: %v\n", err)
+		os.Exit(1)
 	}
-
-	// Step 7: Clean shutdown.
-	return 0
-}
-
-// isHelpFlag reports whether the given string is one of the recognized
-// help request tokens: --help, -h, or help.
-func isHelpFlag(s string) bool {
-	return s == "--help" || s == "-h" || s == "help"
 }
