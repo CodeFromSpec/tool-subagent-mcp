@@ -1,9 +1,9 @@
 ---
-version: 33
+version: 34
 parent_version: 3
 depends_on:
   - path: EXTERNAL/google-uuid
-    version: 1
+    version: 2
   - path: EXTERNAL/mcp-go-sdk
     version: 1
   - path: ROOT/tech_design/internal/chain_resolver
