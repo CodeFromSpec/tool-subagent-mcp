@@ -1,13 +1,5 @@
-// spec: ROOT/tech_design/internal/tools/write_file@v29
-
 // Package write_file implements the write_file MCP tool handler.
-//
-// The tool accepts a logical name, a relative file path, and file content.
-// It resolves the node's frontmatter from the logical name, validates the
-// target path against the node's implements list and the project root, then
-// writes the file to disk.
-//
-// Spec ref: ROOT/tech_design/internal/tools/write_file § "Intent"
+// spec: ROOT/tech_design/internal/tools/write_file@v30
 package write_file
 
 import (
@@ -17,155 +9,119 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-
 	"github.com/CodeFromSpec/tool-subagent-mcp/internal/frontmatter"
 	"github.com/CodeFromSpec/tool-subagent-mcp/internal/logicalnames"
 	"github.com/CodeFromSpec/tool-subagent-mcp/internal/pathvalidation"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// WriteFileArgs holds the input parameters for the write_file tool.
-//
-// Spec ref: ROOT/tech_design/internal/tools/write_file § "WriteFileArgs type"
+// WriteFileArgs defines the input parameters for the write_file tool.
 type WriteFileArgs struct {
 	LogicalName string `json:"logical_name" jsonschema:"Logical name of the node whose implements list authorizes the write."`
-	Path        string `json:"path"         jsonschema:"Relative file path from project root."`
-	Content     string `json:"content"      jsonschema:"Complete file content to write."`
+	Path        string `json:"path" jsonschema:"Relative file path from project root."`
+	Content     string `json:"content" jsonschema:"Complete file content to write."`
 }
 
-// toolError returns a *mcp.CallToolResult with IsError: true and the given
-// message as its text content.
-//
-// Spec ref: ROOT/tech_design/internal/tools § "Tool result — error"
-func toolError(message string) *mcp.CallToolResult {
+// toolError returns an MCP tool error result with the given message.
+func toolError(msg string) (*mcp.CallToolResult, any, error) {
 	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: message}},
+		Content: []mcp.Content{&mcp.TextContent{Text: msg}},
 		IsError: true,
-	}
+	}, nil, nil
 }
 
-// toolSuccess returns a *mcp.CallToolResult with the given message as its
-// text content.
+// HandleWriteFile is the MCP tool handler for write_file.
 //
-// Spec ref: ROOT/tech_design/internal/tools § "Tool result — success"
-func toolSuccess(message string) *mcp.CallToolResult {
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: message}},
-	}
-}
-
-// handleWriteFile is the MCP tool handler for write_file.
-//
-// Algorithm (spec ref: ROOT/tech_design/internal/tools/write_file § "Algorithm"):
-//  1. Validate that args.LogicalName starts with ROOT/ or TEST/ (or equals ROOT or TEST).
-//  2. Call PathFromLogicalName; if it returns false, return a tool error.
-//  3. Call ParseFrontmatter on the resolved path; if it fails, return a tool error.
-//  4. Validate Implements is not empty.
-//  5. Call ValidatePath on args.Path against the working directory.
-//  6. Check that args.Path appears in the frontmatter's Implements (exact string match).
-//  7. Create any missing intermediate directories for the target path.
-//  8. Write args.Content to the file, overwriting if it exists.
-//  9. Return a success result with text "wrote <path>".
-func handleWriteFile(
+// It resolves the node's frontmatter from the provided logical name,
+// validates the target path against the implements list and the project
+// root, then writes the file to disk.
+func HandleWriteFile(
 	ctx context.Context,
 	req *mcp.CallToolRequest,
 	args WriteFileArgs,
 ) (*mcp.CallToolResult, any, error) {
-	// Step 1: Validate that the logical name has an accepted prefix or equals a
-	// known root token.
-	// Spec ref: ROOT/tech_design/internal/tools/write_file § "Algorithm" step 1
-	name := args.LogicalName
-	validPrefix := strings.HasPrefix(name, "ROOT/") ||
-		strings.HasPrefix(name, "TEST/") ||
-		name == "ROOT" ||
-		name == "TEST"
-	if !validPrefix {
-		return toolError(fmt.Sprintf("invalid logical name: %s", name)), nil, nil
+	// Step 1: Validate that the logical name starts with ROOT/ or TEST/
+	// (or equals ROOT or TEST exactly).
+	if !isValidPrefix(args.LogicalName) {
+		return toolError(fmt.Sprintf("invalid logical name: %s", args.LogicalName))
 	}
 
-	// Step 2: Resolve the logical name to a spec file path.
-	// Spec ref: ROOT/tech_design/internal/tools/write_file § "Algorithm" step 2
-	specPath, ok := logicalnames.PathFromLogicalName(name)
+	// Step 2: Resolve the logical name to a file path.
+	specPath, ok := logicalnames.PathFromLogicalName(args.LogicalName)
 	if !ok {
-		return toolError(fmt.Sprintf("invalid logical name: %s", name)), nil, nil
+		return toolError(fmt.Sprintf("invalid logical name: %s", args.LogicalName))
 	}
 
-	// Step 3: Parse frontmatter from the resolved spec file.
-	// Spec ref: ROOT/tech_design/internal/tools/write_file § "Algorithm" step 3
+	// Step 3: Parse the frontmatter from the resolved spec file.
 	fm, err := frontmatter.ParseFrontmatter(specPath)
 	if err != nil {
-		return toolError(fmt.Sprintf("failed to parse frontmatter for %s: %v", name, err)), nil, nil
+		return toolError(fmt.Sprintf("failed to parse frontmatter for %s: %s", args.LogicalName, err.Error()))
 	}
 
-	// Step 4: Ensure the node declares at least one implements path.
-	// Spec ref: ROOT/tech_design/internal/tools/write_file § "Algorithm" step 4
+	// Step 4: Validate that the node has an implements list.
 	if len(fm.Implements) == 0 {
-		return toolError(fmt.Sprintf("node %s has no implements", name)), nil, nil
+		return toolError(fmt.Sprintf("node %s has no implements", args.LogicalName))
 	}
 
-	// Step 5: Validate the target path against the project root (security boundary).
-	// Spec ref: ROOT/tech_design/internal/tools/write_file § "Algorithm" step 5
-	// and ROOT/tech_design/internal/tools § "Path validation"
+	// Step 5: Validate the path against the working directory using ValidatePath.
 	wd, err := os.Getwd()
 	if err != nil {
-		return toolError(fmt.Sprintf("failed to determine working directory: %v", err)), nil, nil
+		return toolError(fmt.Sprintf("failed to determine working directory: %s", err.Error()))
 	}
-
 	if err := pathvalidation.ValidatePath(args.Path, wd); err != nil {
 		return toolError(fmt.Sprintf(
-			"invalid path %q: %v. allowed paths: %s",
-			args.Path, err, strings.Join(fm.Implements, ", "),
-		)), nil, nil
+			"path validation failed: %s. allowed paths: %s",
+			err.Error(),
+			strings.Join(fm.Implements, ", "),
+		))
 	}
 
-	// Step 6: Verify that args.Path is in the node's implements list (exact match).
-	// This is the security boundary — only declared files may be written.
-	// Spec ref: ROOT/tech_design/internal/tools/write_file § "Algorithm" step 6
-	// and § "Decisions: write_file validates against implements"
-	allowed := false
-	for _, imp := range fm.Implements {
-		if imp == args.Path {
-			allowed = true
-			break
-		}
-	}
-	if !allowed {
+	// Step 6: Check that the path appears in the implements list (exact match).
+	if !containsPath(fm.Implements, args.Path) {
 		return toolError(fmt.Sprintf(
 			"path not allowed: %s. allowed paths: %s",
-			args.Path, strings.Join(fm.Implements, ", "),
-		)), nil, nil
+			args.Path,
+			strings.Join(fm.Implements, ", "),
+		))
 	}
 
 	// Step 7: Create any missing intermediate directories.
-	// Spec ref: ROOT/tech_design/internal/tools/write_file § "Algorithm" step 7
-	absPath := filepath.Join(wd, args.Path)
-	dir := filepath.Dir(absPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return toolError(fmt.Sprintf(
-			"failed to create directories for %s: %v", args.Path, err,
-		)), nil, nil
+	dir := filepath.Dir(args.Path)
+	if dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return toolError(fmt.Sprintf("failed to create directories for %s: %s", args.Path, err.Error()))
+		}
 	}
 
-	// Step 8: Write content to the file, overwriting if it already exists.
-	// Spec ref: ROOT/tech_design/internal/tools/write_file § "Algorithm" step 8
-	if err := os.WriteFile(absPath, []byte(args.Content), 0644); err != nil {
-		return toolError(fmt.Sprintf(
-			"failed to write %s: %v", args.Path, err,
-		)), nil, nil
+	// Step 8: Write the content to the file, overwriting if it exists.
+	if err := os.WriteFile(args.Path, []byte(args.Content), 0o644); err != nil {
+		return toolError(fmt.Sprintf("failed to write %s: %s", args.Path, err.Error()))
 	}
 
 	// Step 9: Return success.
-	// Spec ref: ROOT/tech_design/internal/tools/write_file § "Algorithm" step 9
-	return toolSuccess(fmt.Sprintf("wrote %s", args.Path)), nil, nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("wrote %s", args.Path)}},
+	}, nil, nil
 }
 
-// Register adds the write_file tool to the given MCP server.
-//
-// Tool name and description follow the spec exactly.
-// Spec ref: ROOT/tech_design/internal/tools/write_file § "Tool definition"
-func Register(server *mcp.Server) {
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "write_file",
-		Description: "Write a generated source file to disk. The path must be one of the files declared in the node's implements list. Overwrites existing content.",
-	}, handleWriteFile)
+// isValidPrefix checks that a logical name starts with ROOT/ or TEST/,
+// or equals ROOT or TEST exactly.
+func isValidPrefix(name string) bool {
+	if name == "ROOT" || name == "TEST" {
+		return true
+	}
+	if strings.HasPrefix(name, "ROOT/") || strings.HasPrefix(name, "TEST/") {
+		return true
+	}
+	return false
+}
+
+// containsPath checks whether the given path appears in the list (exact match).
+func containsPath(list []string, path string) bool {
+	for _, p := range list {
+		if p == path {
+			return true
+		}
+	}
+	return false
 }

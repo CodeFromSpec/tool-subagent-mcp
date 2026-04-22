@@ -1,14 +1,5 @@
-// spec: TEST/tech_design/internal/tools/load_chain@v2
+// spec: TEST/tech_design/internal/tools/load_chain@v5
 package load_chain
-
-// Tests for the load_chain tool handler.
-//
-// Spec ref: TEST/tech_design/internal/tools/load_chain § "Context"
-// Each test uses t.TempDir() for isolation. The working directory is changed
-// to the temp dir so that path validation and file resolution work correctly.
-//
-// The handler is tested via handleLoadChain directly (unexported). Tests
-// cover both happy-path and failure cases as defined in the spec.
 
 import (
 	"context"
@@ -20,316 +11,312 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// changeDir changes the working directory for the duration of the test,
-// restoring the original on cleanup.
-func changeDir(t *testing.T, dir string) {
+// helper: creates a spec file at the given path relative to dir,
+// writing the provided content. Creates parent directories as needed.
+func createFile(t *testing.T, dir, relPath, content string) {
 	t.Helper()
-	orig, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
+	full := filepath.Join(dir, filepath.FromSlash(relPath))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatalf("creating dirs for %s: %v", relPath, err)
 	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir %s: %v", dir, err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chdir(orig); err != nil {
-			t.Errorf("chdir restore: %v", err)
-		}
-	})
-}
-
-// mustWriteFile creates all parent directories and writes data to path.
-func mustWriteFile(t *testing.T, path, data string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdirall %s: %v", filepath.Dir(path), err)
-	}
-	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
-		t.Fatalf("writefile %s: %v", path, err)
+	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+		t.Fatalf("writing %s: %v", relPath, err)
 	}
 }
 
-// callHandler is a convenience wrapper for invoking handleLoadChain.
-func callHandler(t *testing.T, logicalName string) *mcp.CallToolResult {
+// helper: calls HandleLoadChain with the given logical name.
+func callLoadChain(t *testing.T, logicalName string) *mcp.CallToolResult {
 	t.Helper()
-	args := LoadChainArgs{LogicalName: logicalName}
-	result, _, err := handleLoadChain(context.Background(), &mcp.CallToolRequest{}, args)
+	result, _, err := HandleLoadChain(
+		context.Background(),
+		&mcp.CallToolRequest{},
+		LoadChainArgs{LogicalName: logicalName},
+	)
 	if err != nil {
-		t.Fatalf("handleLoadChain returned unexpected Go error: %v", err)
+		t.Fatalf("HandleLoadChain returned unexpected Go error: %v", err)
 	}
 	return result
 }
 
-// rootNodeFM is a minimal _node.md for ROOT with no frontmatter fields that
-// cause issues — just a version so ParseFrontmatter doesn't fail.
-const rootNodeFM = `---
-version: 1
----
-
-# ROOT
-`
-
-// leafNodeFM builds a _node.md for a leaf with the given implements paths.
-func leafNodeFM(implements ...string) string {
-	var sb strings.Builder
-	sb.WriteString("---\nimplements:\n")
-	for _, p := range implements {
-		sb.WriteString("  - ")
-		sb.WriteString(p)
-		sb.WriteString("\n")
+// helper: extracts the text content from a CallToolResult.
+func resultText(t *testing.T, result *mcp.CallToolResult) string {
+	t.Helper()
+	if len(result.Content) == 0 {
+		t.Fatal("result has no content")
 	}
-	sb.WriteString("---\n\n# leaf\n")
-	return sb.String()
+	tc, ok := result.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("result content is not TextContent: %T", result.Content[0])
+	}
+	return tc.Text
 }
 
-// leafNodeNoImpl is a leaf _node.md with no implements field.
-const leafNodeNoImpl = `---
-version: 1
----
-
-# leaf without implements
-`
-
-// ─── Happy Path ──────────────────────────────────────────────────────────────
-
-// Spec ref: TEST § "Valid ROOT/ leaf node"
-func TestHandleLoadChain_ValidRootLeaf(t *testing.T) {
-	dir := t.TempDir()
-	changeDir(t, dir)
-
-	// Build spec tree: ROOT and ROOT/a
-	mustWriteFile(t, "code-from-spec/spec/_node.md", rootNodeFM)
-	mustWriteFile(t, "code-from-spec/spec/a/_node.md", leafNodeFM("internal/a/a.go"))
-
-	result := callHandler(t, "ROOT/a")
-
-	if result.IsError {
-		t.Fatalf("expected success, got tool error: %v", textOf(result))
+// helper: changes the working directory to dir for the duration of the test.
+func chdir(t *testing.T, dir string) {
+	t.Helper()
+	orig, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getting cwd: %v", err)
 	}
-	text := textOf(result)
-	if !strings.Contains(text, "<<<FILE_") {
-		t.Errorf("expected chain content with <<<FILE_ delimiter, got: %s", text)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir to %s: %v", dir, err)
 	}
-	// Chain must contain content from both ROOT and ROOT/a spec files.
-	if !strings.Contains(text, "node: ROOT") {
-		t.Errorf("expected chain to include ROOT node, got: %s", text)
-	}
-	if !strings.Contains(text, "node: ROOT/a") {
-		t.Errorf("expected chain to include ROOT/a node, got: %s", text)
-	}
+	t.Cleanup(func() {
+		_ = os.Chdir(orig)
+	})
 }
 
-// Spec ref: TEST § "Valid TEST/ node"
-func TestHandleLoadChain_ValidTestNode(t *testing.T) {
+// rootNode returns minimal frontmatter for a ROOT node (no implements, no deps).
+func rootNode() string {
+	return "---\nversion: 1\n---\n# ROOT\n"
+}
+
+// leafNode returns frontmatter for a leaf node with implements.
+func leafNode() string {
+	return "---\nversion: 1\nimplements:\n  - internal/foo/foo.go\n---\n# Leaf\n"
+}
+
+// leafNodeNoDeps returns frontmatter for a leaf node without implements.
+func leafNodeNoImplements() string {
+	return "---\nversion: 1\n---\n# Leaf without implements\n"
+}
+
+// --- Happy Path ---
+
+// TestValidRootLeafNode tests that a valid ROOT/ leaf node returns
+// a success result containing chain content from ROOT and ROOT/a.
+func TestValidRootLeafNode(t *testing.T) {
 	dir := t.TempDir()
-	changeDir(t, dir)
+	chdir(t, dir)
 
-	// Build spec tree: ROOT, ROOT/a (leaf), TEST/a
-	mustWriteFile(t, "code-from-spec/spec/_node.md", rootNodeFM)
-	mustWriteFile(t, "code-from-spec/spec/a/_node.md", leafNodeFM("internal/a/a.go"))
-	// TEST/a → code-from-spec/spec/a/default.test.md
-	mustWriteFile(t, "code-from-spec/spec/a/default.test.md",
-		"---\nparent_version: 1\nimplements:\n  - internal/a/a_test.go\n---\n\n# TEST/a\n")
+	// Create ROOT node
+	createFile(t, dir, "code-from-spec/spec/_node.md", rootNode())
+	// Create ROOT/a leaf node with implements
+	createFile(t, dir, "code-from-spec/spec/a/_node.md", leafNode())
 
-	result := callHandler(t, "TEST/a")
+	result := callLoadChain(t, "ROOT/a")
 
 	if result.IsError {
-		t.Fatalf("expected success, got tool error: %v", textOf(result))
+		t.Fatalf("expected success, got error: %s", resultText(t, result))
 	}
-	if text := textOf(result); len(text) == 0 {
-		t.Errorf("expected non-empty chain content")
+
+	text := resultText(t, result)
+
+	// Chain should contain both ROOT and ROOT/a
+	if !strings.Contains(text, "node: ROOT\n") {
+		t.Error("chain content missing ROOT node")
+	}
+	if !strings.Contains(text, "node: ROOT/a\n") {
+		t.Error("chain content missing ROOT/a node")
 	}
 }
 
-// Spec ref: TEST § "Node with dependencies"
-func TestHandleLoadChain_NodeWithDependencies(t *testing.T) {
+// TestValidTestNode tests that a valid TEST/ node returns a success result.
+func TestValidTestNode(t *testing.T) {
 	dir := t.TempDir()
-	changeDir(t, dir)
+	chdir(t, dir)
 
-	// ROOT/a depends on EXTERNAL/db
-	mustWriteFile(t, "code-from-spec/spec/_node.md", rootNodeFM)
-	mustWriteFile(t, "code-from-spec/spec/a/_node.md",
-		"---\nimplements:\n  - internal/a/a.go\ndepends_on:\n  - path: EXTERNAL/db\n    version: 1\n---\n\n# ROOT/a\n")
+	// Create ROOT node
+	createFile(t, dir, "code-from-spec/spec/_node.md", rootNode())
+	// Create ROOT/a leaf node with implements
+	createFile(t, dir, "code-from-spec/spec/a/_node.md", leafNode())
+	// Create TEST/a node with implements
+	createFile(t, dir, "code-from-spec/spec/a/default.test.md",
+		"---\nversion: 1\nimplements:\n  - internal/foo/foo_test.go\n---\n# Test\n")
 
-	// Create the EXTERNAL/db dependency
-	mustWriteFile(t, "code-from-spec/external/db/_external.md", "---\nversion: 1\n---\n\n# EXTERNAL/db\n")
-	mustWriteFile(t, "code-from-spec/external/db/schema.sql", "CREATE TABLE foo (id INT);\n")
-
-	result := callHandler(t, "ROOT/a")
+	result := callLoadChain(t, "TEST/a")
 
 	if result.IsError {
-		t.Fatalf("expected success, got tool error: %v", textOf(result))
+		t.Fatalf("expected success, got error: %s", resultText(t, result))
 	}
-	text := textOf(result)
-	// Chain must include the external dependency files.
+}
+
+// TestNodeWithDependencies tests that a node with external dependencies
+// returns chain content including the dependency files.
+func TestNodeWithDependencies(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	// Create ROOT node
+	createFile(t, dir, "code-from-spec/spec/_node.md", rootNode())
+
+	// Create ROOT/a leaf with depends_on referencing EXTERNAL/db
+	createFile(t, dir, "code-from-spec/spec/a/_node.md",
+		"---\nversion: 1\nimplements:\n  - internal/foo/foo.go\ndepends_on:\n  - path: EXTERNAL/db\n---\n# Leaf with dep\n")
+
+	// Create EXTERNAL/db with _external.md and a data file
+	createFile(t, dir, "code-from-spec/external/db/_external.md",
+		"---\nversion: 1\n---\n# EXTERNAL/db\n")
+	createFile(t, dir, "code-from-spec/external/db/schema.sql",
+		"CREATE TABLE foo (id INT);")
+
+	result := callLoadChain(t, "ROOT/a")
+
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", resultText(t, result))
+	}
+
+	text := resultText(t, result)
+
+	// Chain should contain the external dependency files
 	if !strings.Contains(text, "node: EXTERNAL/db") {
-		t.Errorf("expected chain to include EXTERNAL/db, got: %s", text)
+		t.Error("chain content missing EXTERNAL/db node")
 	}
 	if !strings.Contains(text, "schema.sql") {
-		t.Errorf("expected chain to include schema.sql, got: %s", text)
+		t.Error("chain content missing schema.sql data file path")
 	}
 }
 
-// Spec ref: TEST § "Chain content uses heredoc format"
-func TestHandleLoadChain_HeredocFormat(t *testing.T) {
+// TestChainContentUsesHeredocFormat verifies the output uses
+// <<<FILE_<uuid>>> and <<<END_FILE_<uuid>>> delimiters with
+// node: and path: headers.
+func TestChainContentUsesHeredocFormat(t *testing.T) {
 	dir := t.TempDir()
-	changeDir(t, dir)
+	chdir(t, dir)
 
-	mustWriteFile(t, "code-from-spec/spec/_node.md", rootNodeFM)
-	mustWriteFile(t, "code-from-spec/spec/a/_node.md", leafNodeFM("internal/a/a.go"))
+	createFile(t, dir, "code-from-spec/spec/_node.md", rootNode())
+	createFile(t, dir, "code-from-spec/spec/a/_node.md", leafNode())
 
-	result := callHandler(t, "ROOT/a")
+	result := callLoadChain(t, "ROOT/a")
 
 	if result.IsError {
-		t.Fatalf("expected success, got tool error: %v", textOf(result))
+		t.Fatalf("expected success, got error: %s", resultText(t, result))
 	}
-	text := textOf(result)
 
-	// Spec ref: ROOT/tech_design/internal/tools/load_chain § "Chain output format"
+	text := resultText(t, result)
+
 	if !strings.Contains(text, "<<<FILE_") {
-		t.Errorf("expected <<<FILE_ delimiter, got: %s", text)
+		t.Error("chain content missing <<<FILE_ delimiter")
 	}
 	if !strings.Contains(text, "<<<END_FILE_") {
-		t.Errorf("expected <<<END_FILE_ delimiter, got: %s", text)
+		t.Error("chain content missing <<<END_FILE_ delimiter")
 	}
 	if !strings.Contains(text, "node:") {
-		t.Errorf("expected node: header, got: %s", text)
+		t.Error("chain content missing node: header")
 	}
 	if !strings.Contains(text, "path:") {
-		t.Errorf("expected path: header, got: %s", text)
+		t.Error("chain content missing path: header")
 	}
 }
 
-// Spec ref: TEST § "Repeated calls succeed"
-func TestHandleLoadChain_RepeatedCallsSucceed(t *testing.T) {
+// TestRepeatedCallsSucceed verifies that calling HandleLoadChain
+// twice with the same logical name both succeed. UUIDs may differ.
+func TestRepeatedCallsSucceed(t *testing.T) {
 	dir := t.TempDir()
-	changeDir(t, dir)
+	chdir(t, dir)
 
-	mustWriteFile(t, "code-from-spec/spec/_node.md", rootNodeFM)
-	mustWriteFile(t, "code-from-spec/spec/a/_node.md", leafNodeFM("internal/a/a.go"))
+	createFile(t, dir, "code-from-spec/spec/_node.md", rootNode())
+	createFile(t, dir, "code-from-spec/spec/a/_node.md", leafNode())
 
-	result1 := callHandler(t, "ROOT/a")
-	result2 := callHandler(t, "ROOT/a")
+	result1 := callLoadChain(t, "ROOT/a")
+	result2 := callLoadChain(t, "ROOT/a")
 
 	if result1.IsError {
-		t.Fatalf("first call: expected success, got: %v", textOf(result1))
+		t.Fatalf("first call failed: %s", resultText(t, result1))
 	}
 	if result2.IsError {
-		t.Fatalf("second call: expected success, got: %v", textOf(result2))
+		t.Fatalf("second call failed: %s", resultText(t, result2))
 	}
-	if len(textOf(result1)) == 0 {
-		t.Errorf("first call returned empty content")
+
+	text1 := resultText(t, result1)
+	text2 := resultText(t, result2)
+
+	if len(text1) == 0 {
+		t.Error("first call returned empty content")
 	}
-	if len(textOf(result2)) == 0 {
-		t.Errorf("second call returned empty content")
-	}
-	// UUIDs differ between calls, so the delimiter strings will differ.
-	// We just verify both are non-empty and each starts with <<<FILE_.
-	if !strings.Contains(textOf(result1), "<<<FILE_") {
-		t.Errorf("first call missing <<<FILE_ delimiter")
-	}
-	if !strings.Contains(textOf(result2), "<<<FILE_") {
-		t.Errorf("second call missing <<<FILE_ delimiter")
+	if len(text2) == 0 {
+		t.Error("second call returned empty content")
 	}
 }
 
-// ─── Failure Cases ────────────────────────────────────────────────────────────
+// --- Failure Cases ---
 
-// Spec ref: TEST § "Invalid prefix"
-func TestHandleLoadChain_InvalidPrefix(t *testing.T) {
-	// No temp dir needed — validation fails before any file I/O.
-	result, _, err := handleLoadChain(context.Background(), &mcp.CallToolRequest{},
-		LoadChainArgs{LogicalName: "EXTERNAL/something"})
-	if err != nil {
-		t.Fatalf("unexpected Go error: %v", err)
-	}
-	if !result.IsError {
-		t.Fatalf("expected tool error, got success: %v", textOf(result))
-	}
-	// Spec ref: ROOT/tech_design/internal/tools/load_chain § "Algorithm" step 1
-	if !strings.Contains(textOf(result), "target must be a ROOT/ or TEST/") {
-		t.Errorf("expected 'target must be a ROOT/ or TEST/' in error, got: %s", textOf(result))
-	}
-}
-
-// Spec ref: TEST § "Nonexistent spec file"
-func TestHandleLoadChain_NonexistentSpecFile(t *testing.T) {
+// TestInvalidPrefix verifies that a logical name not starting with
+// ROOT/ or TEST/ returns a tool error.
+func TestInvalidPrefix(t *testing.T) {
 	dir := t.TempDir()
-	changeDir(t, dir)
+	chdir(t, dir)
 
-	// Do NOT create any spec files — ParseFrontmatter should fail.
-	result := callHandler(t, "ROOT/nonexistent")
+	result := callLoadChain(t, "EXTERNAL/something")
 
 	if !result.IsError {
-		t.Fatalf("expected tool error, got success")
+		t.Fatal("expected tool error for EXTERNAL/ prefix")
 	}
-	// Error comes from ParseFrontmatter (file not found).
-	if len(textOf(result)) == 0 {
-		t.Errorf("expected non-empty error message")
+
+	text := resultText(t, result)
+	if !strings.Contains(text, "target must be a ROOT/ or TEST/") {
+		t.Errorf("unexpected error message: %s", text)
 	}
 }
 
-// Spec ref: TEST § "No implements"
-func TestHandleLoadChain_NoImplements(t *testing.T) {
+// TestNonexistentSpecFile verifies that a logical name pointing
+// to a nonexistent spec file returns a tool error.
+func TestNonexistentSpecFile(t *testing.T) {
 	dir := t.TempDir()
-	changeDir(t, dir)
+	chdir(t, dir)
 
-	mustWriteFile(t, "code-from-spec/spec/_node.md", rootNodeFM)
-	mustWriteFile(t, "code-from-spec/spec/a/_node.md", leafNodeNoImpl)
-
-	result := callHandler(t, "ROOT/a")
+	// Do NOT create ROOT/nonexistent spec file.
+	result := callLoadChain(t, "ROOT/nonexistent")
 
 	if !result.IsError {
-		t.Fatalf("expected tool error, got success")
-	}
-	// Spec ref: ROOT/tech_design/internal/tools/load_chain § "Algorithm" step 4a
-	if !strings.Contains(textOf(result), "has no implements") {
-		t.Errorf("expected 'has no implements' in error, got: %s", textOf(result))
+		t.Fatal("expected tool error for nonexistent spec file")
 	}
 }
 
-// Spec ref: TEST § "Invalid implements path — traversal"
-func TestHandleLoadChain_InvalidImplementsTraversal(t *testing.T) {
+// TestNoImplements verifies that a node without implements
+// returns a tool error containing "has no implements".
+func TestNoImplements(t *testing.T) {
 	dir := t.TempDir()
-	changeDir(t, dir)
+	chdir(t, dir)
 
-	mustWriteFile(t, "code-from-spec/spec/_node.md", rootNodeFM)
-	// implements contains a directory traversal path
-	mustWriteFile(t, "code-from-spec/spec/a/_node.md", leafNodeFM("../../etc/passwd"))
+	createFile(t, dir, "code-from-spec/spec/_node.md", rootNode())
+	createFile(t, dir, "code-from-spec/spec/a/_node.md", leafNodeNoImplements())
 
-	result := callHandler(t, "ROOT/a")
+	result := callLoadChain(t, "ROOT/a")
 
 	if !result.IsError {
-		t.Fatalf("expected tool error from path validation, got success")
+		t.Fatal("expected tool error for node with no implements")
+	}
+
+	text := resultText(t, result)
+	if !strings.Contains(text, "has no implements") {
+		t.Errorf("unexpected error message: %s", text)
 	}
 }
 
-// Spec ref: TEST § "Unresolvable dependency"
-func TestHandleLoadChain_UnresolvableDependency(t *testing.T) {
+// TestInvalidImplementsPathTraversal verifies that a node with
+// a path-traversal implements entry returns a tool error from
+// path validation.
+func TestInvalidImplementsPathTraversal(t *testing.T) {
 	dir := t.TempDir()
-	changeDir(t, dir)
+	chdir(t, dir)
 
-	// ROOT/a depends on ROOT/b, but ROOT/b's spec file is not created.
-	mustWriteFile(t, "code-from-spec/spec/_node.md", rootNodeFM)
-	mustWriteFile(t, "code-from-spec/spec/a/_node.md",
-		"---\nimplements:\n  - internal/a/a.go\ndepends_on:\n  - path: ROOT/b\n    version: 1\n---\n\n# ROOT/a\n")
+	createFile(t, dir, "code-from-spec/spec/_node.md", rootNode())
+	createFile(t, dir, "code-from-spec/spec/a/_node.md",
+		"---\nversion: 1\nimplements:\n  - \"../../etc/passwd\"\n---\n# Leaf with bad path\n")
 
-	result := callHandler(t, "ROOT/a")
+	result := callLoadChain(t, "ROOT/a")
 
 	if !result.IsError {
-		t.Fatalf("expected tool error from chain resolution, got success")
+		t.Fatal("expected tool error for path traversal in implements")
 	}
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// TestUnresolvableDependency verifies that a node with a dependency
+// pointing to a nonexistent node returns a tool error from chain
+// resolution.
+func TestUnresolvableDependency(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
 
-// textOf extracts the text from the first TextContent entry in a result.
-func textOf(r *mcp.CallToolResult) string {
-	if r == nil || len(r.Content) == 0 {
-		return ""
+	createFile(t, dir, "code-from-spec/spec/_node.md", rootNode())
+	// ROOT/a depends on ROOT/b which does not exist
+	createFile(t, dir, "code-from-spec/spec/a/_node.md",
+		"---\nversion: 1\nimplements:\n  - internal/foo/foo.go\ndepends_on:\n  - path: ROOT/b\n---\n# Leaf with missing dep\n")
+
+	result := callLoadChain(t, "ROOT/a")
+
+	if !result.IsError {
+		t.Fatal("expected tool error for unresolvable dependency")
 	}
-	if tc, ok := r.Content[0].(*mcp.TextContent); ok {
-		return tc.Text
-	}
-	return ""
 }
