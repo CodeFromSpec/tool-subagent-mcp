@@ -1,6 +1,6 @@
 ---
-version: 10
-parent_version: 23
+version: 12
+parent_version: 24
 implements:
   - internal/logicalnames/logicalnames_test.go
 ---
@@ -22,8 +22,8 @@ Expect: `"code-from-spec/spec/_node.md"`, `true`.
 
 ### ROOT with path
 
-Input: `"ROOT/domain/modes"`
-Expect: `"code-from-spec/spec/domain/modes/_node.md"`, `true`.
+Input: `"ROOT/payments/processor"`
+Expect: `"code-from-spec/spec/payments/processor/_node.md"`, `true`.
 
 ### TEST without path
 

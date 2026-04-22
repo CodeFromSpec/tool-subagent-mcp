@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/chain_resolver@v9
+// spec: TEST/tech_design/internal/chain_resolver@v10
 
 // Package chainresolver_test contains tests for the ResolveChain function.
 // Spec ref: TEST/tech_design/internal/chain_resolver § "Context"

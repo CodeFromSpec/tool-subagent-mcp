@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/internal/pathvalidation@v9
+// spec: ROOT/tech_design/internal/pathvalidation@v10
 
 // Package pathvalidation provides security-critical path validation to prevent
 // writing files outside the intended project directory boundary.

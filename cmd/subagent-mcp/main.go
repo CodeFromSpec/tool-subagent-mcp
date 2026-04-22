@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/server@v29
+// spec: ROOT/tech_design/server@v30
 package main
 
 // Entry point for the subagent-mcp MCP server.

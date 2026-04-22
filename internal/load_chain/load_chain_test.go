@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/tools/load_chain@v1
+// spec: TEST/tech_design/internal/tools/load_chain@v2
 package load_chain
 
 // Tests for the load_chain tool handler.

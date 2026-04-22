@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/frontmatter@v9
+// spec: TEST/tech_design/internal/frontmatter@v10
 
 // Package frontmatter_test exercises ParseFrontmatter against all scenarios
 // described in TEST/tech_design/internal/frontmatter (default.test.md).

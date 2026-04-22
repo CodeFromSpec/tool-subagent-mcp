@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/internal/tools/load_chain@v30
+// spec: ROOT/tech_design/internal/tools/load_chain@v31
 
 // Package load_chain implements the load_chain MCP tool handler.
 //

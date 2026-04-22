@@ -1,6 +1,6 @@
 ---
-version: 9
-parent_version: 9
+version: 10
+parent_version: 11
 depends_on:
   - path: EXTERNAL/owasp-path-traversal
     version: 1

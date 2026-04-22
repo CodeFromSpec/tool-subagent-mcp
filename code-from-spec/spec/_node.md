@@ -1,5 +1,5 @@
 ---
-version: 8
+version: 9
 ---
 
 # ROOT
@@ -77,8 +77,8 @@ results — enforcing this is the orchestrator's responsibility.
 The server exposes every tool it has to every connection. If a
 subagent should only use a subset, the orchestrator must enforce
 that by configuring the subagent itself — not by asking the server
-to hide tools. This avoids mode selection logic in the server and
-keeps the tool surface predictable.
+to hide tools. This keeps the server simple and the tool surface
+predictable.
 
 ### Minimal tool surface
 

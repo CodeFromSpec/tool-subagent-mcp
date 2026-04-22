@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/tools/write_file@v1
+// spec: TEST/tech_design/internal/tools/write_file@v2
 
 // Package write_file provides tests for the write_file tool handler.
 // Spec ref: TEST/tech_design/internal/tools/write_file § "Context"

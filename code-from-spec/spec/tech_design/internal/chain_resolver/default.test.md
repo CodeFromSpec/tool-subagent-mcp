@@ -1,6 +1,6 @@
 ---
-version: 9
-parent_version: 50
+version: 10
+parent_version: 53
 implements:
   - internal/chainresolver/chainresolver_test.go
 ---

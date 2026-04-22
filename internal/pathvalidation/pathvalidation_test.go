@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/pathvalidation@v8
+// spec: TEST/tech_design/internal/pathvalidation@v9
 
 // Package pathvalidation_test contains tests for the pathvalidation package.
 // Spec ref: TEST/tech_design/internal/pathvalidation § "Context"

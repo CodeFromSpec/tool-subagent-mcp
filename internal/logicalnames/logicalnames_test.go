@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/logical_names@v10
+// spec: TEST/tech_design/internal/logical_names@v12
 package logicalnames_test
 
 import (
