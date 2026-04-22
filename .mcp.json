@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "subagent-mcp": {
+      "type": "stdio",
+      "command": "D:/Git/CodeFromSpec/tool-subagent-mcp/tools/subagent-mcp.exe",
+      "args": [
+        "codegen"
+      ],
+      "env": {}
+    }
+  }
+}

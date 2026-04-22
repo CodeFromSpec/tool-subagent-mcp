@@ -1,0 +1,43 @@
+name: Publish Binaries
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Generate THIRD_PARTY_LICENSES
+        run: |
+          go install github.com/google/go-licenses@latest
+          go-licenses save ./... --save_path=.third_party --force
+          find .third_party -type f | sort | while read f; do
+            lib="${f#.third_party/}"
+            printf '=%.0s' {1..72} && echo
+            echo "Library: $lib"
+            printf '=%.0s' {1..72} && echo
+            cat "$f"
+            echo
+          done > THIRD_PARTY_LICENSES
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
