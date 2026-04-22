@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/CodeFromSpec/tool-subagent-mcp/compare/v1.0.1...v1.1.0) (2026-04-22)
+
+
+### Features
+
+* major refactor ([#5](https://github.com/CodeFromSpec/tool-subagent-mcp/issues/5)) ([3262c42](https://github.com/CodeFromSpec/tool-subagent-mcp/commit/3262c4254da7089d04be14fe2fcd1f10a39eaa3f))
+
 ## [1.0.1](https://github.com/CodeFromSpec/tool-subagent-mcp/compare/v1.0.0...v1.0.1) (2026-04-22)
 
 
