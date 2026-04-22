@@ -1,5 +1,5 @@
 ---
-version: 18
+version: 20
 parent_version: 8
 ---
 
@@ -41,10 +41,15 @@ The server calls it and prints the result when the user runs
 `subagent-mcp <mode> --help` (or `-h` or `help`).
 The server handles help detection before calling `Setup`.
 
-### State sharing via closures
+### State sharing
 
-`Setup` builds any state that tool handlers need, then
-registers the handlers as closures that capture that state.
-This avoids global variables and explicit struct methods —
-the handler function closes over the variables it needs.
+Tool handlers share state through package-level variables.
+The variable is initialized to its zero value and populated
+at runtime by the first tool call that establishes the state.
+
+#### Decision: package-level variables
+
+`StdioTransport` means a single client per process with no
+concurrent access. Package-level variables are sufficient
+and simple under these constraints.
 

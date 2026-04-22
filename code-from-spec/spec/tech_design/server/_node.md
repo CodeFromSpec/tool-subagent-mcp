@@ -1,5 +1,5 @@
 ---
-version: 25
+version: 26
 parent_version: 12
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
@@ -7,9 +7,9 @@ depends_on:
   - path: ROOT/domain/modes
     version: 12
   - path: ROOT/tech_design/internal/modes
-    version: 18
+    version: 19
   - path: ROOT/tech_design/internal/modes/codegen
-    version: 35
+    version: 36
 implements:
   - cmd/subagent-mcp/main.go
 ---
@@ -58,7 +58,7 @@ code.
 Usage: subagent-mcp <mode> [args...]
 
 Modes:
-  codegen <logical-name>   Generate code for a spec or test node.
+  codegen   Start the codegen MCP server.
 
 Run subagent-mcp <mode> --help for mode-specific help.
 ```

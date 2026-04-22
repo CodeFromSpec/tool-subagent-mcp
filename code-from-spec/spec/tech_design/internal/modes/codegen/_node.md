@@ -1,19 +1,19 @@
 ---
-version: 35
-parent_version: 18
+version: 36
+parent_version: 19
 depends_on:
   - path: ROOT/domain/modes/codegen
     version: 21
   - path: ROOT/tech_design/internal/pathvalidation
-    version: 7
+    version: 8
 ---
 
 # ROOT/tech_design/internal/modes/codegen
 
 ## Intent
 
-Technical design for the codegen mode: argument validation,
-chain pre-loading, and tool registration.
+Technical design for the codegen mode: tool registration
+and package-level state management.
 
 ## Context
 
@@ -40,7 +40,16 @@ type Target struct {
 ```
 
 `ChainContent` holds the fully concatenated chain loaded during
-setup, ready to be returned by `load_context`.
+`load_context`, ready to be returned to the agent.
+
+### Package-level state
+
+```go
+var currentTarget *Target
+```
+
+Set by `load_context` on first call. `nil` until then.
+`write_file` reads from `currentTarget` directly.
 
 ### Chain output format
 
@@ -84,14 +93,13 @@ Exposed as `HelpMessage()`. The server calls it and prints
 the result when the user runs `subagent-mcp codegen --help`.
 
 ```
-Usage: subagent-mcp codegen <logical-name>
+Usage: subagent-mcp codegen
 
 Starts an MCP server over stdin/stdout that provides tools
-for code generation. The logical name identifies a spec or
-test node that implements source code files.
+for code generation.
 
 The server exposes two tools:
-  load_context   Returns the context for code generation.
+  load_context   Loads the context for a spec node and returns it.
   write_file     Writes a generated file to disk.
 
 The subagent should have no other tools available — no file
@@ -105,7 +113,7 @@ MCP configuration example:
       "subagent-mcp": {
         "type": "stdio",
         "command": "<path-to-binary>",
-        "args": ["codegen", "<logical-name>"]
+        "args": ["codegen"]
       }
     }
   }
@@ -120,10 +128,10 @@ MCP server.
 ```
 How to use this MCP server:
 
-1. Call load_context once to receive the context for code
-   generation. Multiple calls are wasteful as it always
-   returns the same content.
-2. Generate the code.
+1. Call load_context with the logical name of the node
+   to generate code for. This loads the context and must be
+   called exactly once per session.
+2. Generate the code from the returned context.
 3. Call write_file once per file to write the result.
 ```
 
@@ -132,8 +140,13 @@ How to use this MCP server:
 #### load_context
 
 Name: `load_context`
-Description: `"Load the context for code generation. Returns all relevant spec files concatenated in a single response."`
-No input parameters.
+Description: `"Load the spec chain context for a given logical name. Must be called exactly once before write_file. Returns all relevant spec files concatenated in a single response."`
+
+Input parameters:
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `logical_name` | string | yes | Logical name of the node to generate code for. |
 
 #### write_file
 
@@ -156,28 +169,32 @@ type WriteFileArgs struct {
 }
 ```
 
+### LoadContextArgs type
+
+```go
+type LoadContextArgs struct {
+    LogicalName string `json:"logical_name" jsonschema:"Logical name of the node to generate code for."`
+}
+```
+
 ### Tool handler signatures
 
 Tool handlers are defined as package-level functions in
-sibling files. `Setup` registers them as closures that
-capture the `Target`.
+sibling files and registered directly by `Setup`.
 
 ```go
-func handleLoadContext(target *Target) func(
+func handleLoadContext(
     ctx context.Context,
     req *mcp.CallToolRequest,
-    _ struct{},
+    args LoadContextArgs,
 ) (*mcp.CallToolResult, any, error)
 
-func handleWriteFile(target *Target) func(
+func handleWriteFile(
     ctx context.Context,
     req *mcp.CallToolRequest,
     args WriteFileArgs,
 ) (*mcp.CallToolResult, any, error)
 ```
-
-Each function takes a `*Target` and returns the closure that
-`Setup` passes to `mcp.AddTool`.
 
 ### Path validation — defense in depth
 

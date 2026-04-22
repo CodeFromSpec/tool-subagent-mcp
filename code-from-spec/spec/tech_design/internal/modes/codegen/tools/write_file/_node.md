@@ -1,13 +1,13 @@
 ---
-version: 25
-parent_version: 17
+version: 26
+parent_version: 18
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 1
   - path: ROOT/domain/modes/codegen
     version: 21
   - path: ROOT/tech_design/internal/pathvalidation
-    version: 7
+    version: 8
 implements:
   - internal/modes/codegen/write_file.go
 ---
@@ -30,16 +30,18 @@ already deserialized by the MCP SDK.
 
 ### Algorithm
 
-1. Call `ValidatePath` on `args.Path` against the working
+1. If `currentTarget == nil`, return a tool error:
+   `"load_context must be called before write_file"`.
+2. Call `ValidatePath` on `args.Path` against the working
    directory. If it fails, return a tool error with the
    validation error and the list of valid `implements` paths.
-2. Check that `args.Path` appears in
-   `target.Frontmatter.Implements` (exact string match). If
-   not, return a tool error listing the valid paths.
-3. Create any missing intermediate directories for the target
+3. Check that `args.Path` appears in
+   `currentTarget.Frontmatter.Implements` (exact string match).
+   If not, return a tool error listing the valid paths.
+4. Create any missing intermediate directories for the target
    path.
-4. Write `args.Content` to the file, overwriting if it exists.
-5. Return a success result with text `"wrote <path>"`.
+5. Write `args.Content` to the file, overwriting if it exists.
+6. Return a success result with text `"wrote <path>"`.
 
 ### Error handling
 
