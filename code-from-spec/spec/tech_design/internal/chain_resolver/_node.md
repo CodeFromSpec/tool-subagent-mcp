@@ -5,7 +5,7 @@ depends_on:
   - path: EXTERNAL/codefromspec
     version: 1
   - path: ROOT/tech_design/internal/frontmatter
-    version: 24
+    version: 25
   - path: ROOT/tech_design/internal/logical_names
     version: 22
 implements:

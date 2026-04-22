@@ -1,5 +1,5 @@
 ---
-version: 24
+version: 25
 parent_version: 8
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -48,9 +48,9 @@ ignored.
 
 Each `depends_on` entry has:
 
-| Field | Type | Required | Description |
+| YAML key | Type | Required | Description |
 |---|---|---|---|
-| `logical_name` | string | yes | Logical name of the dependency. |
+| `path` | string | yes | Logical name of the dependency. |
 | `filter` | []string | no | Glob patterns for file selection within an external dep folder. |
 
 ### Interface
