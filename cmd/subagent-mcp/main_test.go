@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/server@v8
+// spec: TEST/tech_design/server@v9
 
 // Package main — integration tests for the subagent-mcp binary.
 //
@@ -192,8 +192,6 @@ func TestCodegenMode_ServerInstructionsMatchCodegenInstructions(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10_000_000_000) // 10s
 	defer cancel()
 
-	logicalName := "TEST/tech_design/server"
-
 	// Derive project root by walking up two levels from the package directory.
 	// go test sets cwd to the package directory (cmd/subagent-mcp/), so walking
 	// up two levels reaches the project root.
@@ -207,7 +205,7 @@ func TestCodegenMode_ServerInstructionsMatchCodegenInstructions(t *testing.T) {
 	}
 	projectRoot := filepath.Join(wd, "..", "..")
 
-	cmd := exec.CommandContext(ctx, binaryPath, "codegen", logicalName)
+	cmd := exec.CommandContext(ctx, binaryPath, "codegen")
 	cmd.Dir = projectRoot
 
 	transport := &mcp.CommandTransport{Command: cmd}
@@ -283,24 +281,19 @@ func TestUnrecognizedMode_PrintsUsageToStderr(t *testing.T) {
 	}
 }
 
-// TestCodegenSetupError_PrintsToStderr verifies that running the binary with
-// "codegen" and no logical name argument exits 1 and prints the setup error
-// to stderr.
+// TestCodegenWithExtraArgs_PrintsErrorToStderr verifies that running the binary
+// with extra arguments after "codegen" exits 1 and prints the setup error.
 //
-// Spec ref: TEST/tech_design/server § "Codegen setup error prints to stderr"
-func TestCodegenSetupError_PrintsToStderr(t *testing.T) {
-	// Provide "codegen" with no further arguments. Setup requires exactly one
-	// argument (the logical name), so it must return an error.
-	_, stderr, exitCode := runBinary("codegen")
+// Spec ref: TEST/tech_design/server § "Codegen with extra arguments prints error to stderr"
+func TestCodegenWithExtraArgs_PrintsErrorToStderr(t *testing.T) {
+	_, stderr, exitCode := runBinary("codegen", "extraarg")
 
 	if exitCode != 1 {
 		t.Errorf("expected exit 1, got %d", exitCode)
 	}
 
-	// The error message must appear on stderr. We check for "error:" which
-	// is the prefix main adds before all Setup errors (see main.go step 4).
-	const want = "error:"
+	const want = "codegen mode does not accept arguments"
 	if !strings.Contains(stderr, want) {
-		t.Errorf("stderr does not contain setup error prefix %q\ngot stderr:\n%s", want, stderr)
+		t.Errorf("stderr does not contain %q\ngot stderr:\n%s", want, stderr)
 	}
 }

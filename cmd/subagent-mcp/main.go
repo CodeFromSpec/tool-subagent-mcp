@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/server@v25
+// spec: ROOT/tech_design/server@v26
 
 // Package main is the entry point for the subagent-mcp binary.
 //
@@ -36,7 +36,7 @@ import (
 const usageMessage = `Usage: subagent-mcp <mode> [args...]
 
 Modes:
-  codegen <logical-name>   Generate code for a spec or test node.
+  codegen   Start the codegen MCP server.
 
 Run subagent-mcp <mode> --help for mode-specific help.
 `

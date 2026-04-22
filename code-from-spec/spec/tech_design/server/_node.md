@@ -7,7 +7,7 @@ depends_on:
   - path: ROOT/domain/modes
     version: 12
   - path: ROOT/tech_design/internal/modes
-    version: 19
+    version: 20
   - path: ROOT/tech_design/internal/modes/codegen
     version: 36
 implements:

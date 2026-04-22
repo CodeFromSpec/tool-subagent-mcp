@@ -1,49 +1,144 @@
-// spec: ROOT/tech_design/internal/modes/codegen/tools/load_context@v27
+// spec: ROOT/tech_design/internal/modes/codegen/tools/load_context@v28
 
-// Package codegen implements the codegen mode for the subagent MCP server.
-// This file provides the load_context tool handler, which returns the
-// pre-loaded chain content to the subagent in a single MCP text response.
-//
-// The handler performs no I/O — all chain content is assembled during setup
-// and stored in Target.ChainContent. This design minimises per-call latency
-// and keeps the handler trivially correct: there is nothing to go wrong at
-// call time.
 package codegen
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
+	"os"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/CodeFromSpec/tool-subagent-mcp/internal/chainresolver"
+	"github.com/CodeFromSpec/tool-subagent-mcp/internal/frontmatter"
+	"github.com/CodeFromSpec/tool-subagent-mcp/internal/logicalnames"
+	"github.com/CodeFromSpec/tool-subagent-mcp/internal/pathvalidation"
 )
 
-// handleLoadContext returns the closure registered as the load_context tool
-// handler. It captures target so the closure can access the pre-loaded chain
-// without any additional I/O.
-//
-// Per spec (ROOT/domain/modes/codegen): load_context must return the complete
-// chain as a single text response. Partial results are never returned — if the
-// chain could not be loaded during setup, the server would have already exited.
-//
-// Per spec (ROOT/tech_design/internal/modes/codegen/tools): the returned Go
-// error is reserved for catastrophic server failures; all expected conditions
-// use IsError on the result. Because this handler has no failure modes of its
-// own (the content is already in memory), it always returns a success result.
-func handleLoadContext(target *Target) func(
+func toolError(msg string) *mcp.CallToolResult {
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: msg}},
+		IsError: true,
+	}
+}
+
+func isValidCodegenTarget(name string) bool {
+	return name == "ROOT" || name == "TEST" ||
+		strings.HasPrefix(name, "ROOT/") || strings.HasPrefix(name, "TEST/")
+}
+
+func generateUUID() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	// Version 4
+	b[6] = (b[6] & 0x0f) | 0x40
+	// Variant bits
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]), nil
+}
+
+func buildChainContent(chain *chainresolver.Chain, uuid string) (string, error) {
+	var sb strings.Builder
+
+	writeItem := func(item chainresolver.ChainItem) error {
+		for _, fp := range item.FilePaths {
+			data, err := os.ReadFile(fp)
+			if err != nil {
+				return fmt.Errorf("reading %s: %w", fp, err)
+			}
+			fmt.Fprintf(&sb, "<<<FILE_%s>>>\nnode: %s\npath: %s\n\n%s\n<<<END_FILE_%s>>>\n\n",
+				uuid, item.LogicalName, fp, data, uuid)
+		}
+		return nil
+	}
+
+	for _, item := range chain.Ancestors {
+		if err := writeItem(item); err != nil {
+			return "", err
+		}
+	}
+	if err := writeItem(chain.Target); err != nil {
+		return "", err
+	}
+	for _, item := range chain.Dependencies {
+		if err := writeItem(item); err != nil {
+			return "", err
+		}
+	}
+
+	return strings.TrimRight(sb.String(), "\n"), nil
+}
+
+func handleLoadContext(
 	ctx context.Context,
 	req *mcp.CallToolRequest,
-	_ struct{},
+	args LoadContextArgs,
 ) (*mcp.CallToolResult, any, error) {
-	return func(
-		ctx context.Context,
-		req *mcp.CallToolRequest,
-		_ struct{},
-	) (*mcp.CallToolResult, any, error) {
-		// Return the chain content that was assembled during Setup.
-		// No I/O occurs here — the content is already in memory.
-		// This satisfies the spec requirement that load_context returns
-		// everything in one call (ROOT/domain/modes/codegen §Decisions).
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: target.ChainContent}},
-		}, nil, nil
+	// Step 1
+	if currentTarget != nil {
+		return toolError("load_context already called for this session"), nil, nil
 	}
+
+	// Step 2
+	if !isValidCodegenTarget(args.LogicalName) {
+		return toolError(fmt.Sprintf("codegen target must be a ROOT/ or TEST/ logical name: %s", args.LogicalName)), nil, nil
+	}
+
+	// Step 3
+	filePath, ok := logicalnames.PathFromLogicalName(args.LogicalName)
+	if !ok {
+		return toolError(fmt.Sprintf("invalid logical name: %s", args.LogicalName)), nil, nil
+	}
+
+	// Step 4
+	fm, err := frontmatter.ParseFrontmatter(filePath)
+	if err != nil {
+		return toolError(fmt.Sprintf("error loading frontmatter: %v", err)), nil, nil
+	}
+
+	// Step 5
+	if len(fm.Implements) == 0 {
+		return toolError(fmt.Sprintf("node %s has no implements", args.LogicalName)), nil, nil
+	}
+	projectRoot, err := os.Getwd()
+	if err != nil {
+		return toolError(fmt.Sprintf("error getting working directory: %v", err)), nil, nil
+	}
+	for _, impl := range fm.Implements {
+		if err := pathvalidation.ValidatePath(impl, projectRoot); err != nil {
+			return toolError(fmt.Sprintf("invalid implements path %s: %v", impl, err)), nil, nil
+		}
+	}
+
+	// Step 6
+	uuid, err := generateUUID()
+	if err != nil {
+		return toolError(fmt.Sprintf("error generating UUID: %v", err)), nil, nil
+	}
+	chain, err := chainresolver.ResolveChain(args.LogicalName)
+	if err != nil {
+		return toolError(fmt.Sprintf("error resolving chain: %v", err)), nil, nil
+	}
+	chainContent, err := buildChainContent(chain, uuid)
+	if err != nil {
+		return toolError(fmt.Sprintf("error building chain content: %v", err)), nil, nil
+	}
+
+	// Step 7
+	currentTarget = &Target{
+		LogicalName:  args.LogicalName,
+		FilePath:     filePath,
+		Frontmatter:  fm,
+		ChainContent: chainContent,
+	}
+
+	// Step 8
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: chainContent}},
+	}, nil, nil
 }

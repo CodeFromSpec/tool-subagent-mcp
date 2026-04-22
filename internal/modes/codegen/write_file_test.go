@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/modes/codegen/tools/write_file@v4
+// spec: TEST/tech_design/internal/modes/codegen/tools/write_file@v5
 
 // Package codegen — tests for the write_file tool handler.
 //
@@ -63,14 +63,13 @@ func makeWriteFileTarget(implements []string) *Target {
 	}
 }
 
-// invokeWriteFile is a thin wrapper that obtains the handler closure from
-// handleWriteFile and invokes it, returning the *mcp.CallToolResult directly.
-// It fails the test immediately if the returned Go error is non-nil (that path
-// is reserved for catastrophic server failures, which are never expected here).
+// invokeWriteFile sets currentTarget and calls handleWriteFile directly.
+// It resets currentTarget to nil after the test.
 func invokeWriteFile(t *testing.T, target *Target, args WriteFileArgs) *mcp.CallToolResult {
 	t.Helper()
-	handler := handleWriteFile(target)
-	result, _, err := handler(context.Background(), &mcp.CallToolRequest{}, args)
+	currentTarget = target
+	t.Cleanup(func() { currentTarget = nil })
+	result, _, err := handleWriteFile(context.Background(), &mcp.CallToolRequest{}, args)
 	if err != nil {
 		t.Fatalf("handleWriteFile returned unexpected Go error: %v", err)
 	}
@@ -92,6 +91,25 @@ func resultText(t *testing.T, result *mcp.CallToolResult) string {
 		t.Fatalf("expected *mcp.TextContent, got %T", result.Content[0])
 	}
 	return tc.Text
+}
+
+// ── Failure Cases (target nil) ────────────────────────────────────────────────
+
+// TestWriteFile_NoTargetLoaded verifies that calling write_file before
+// load_context returns a tool error.
+func TestWriteFile_NoTargetLoaded(t *testing.T) {
+	currentTarget = nil
+	result, _, err := handleWriteFile(context.Background(), &mcp.CallToolRequest{}, WriteFileArgs{Path: "any/file.go"})
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected tool error when currentTarget is nil")
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "load_context must be called before write_file") {
+		t.Errorf("error must contain expected message, got: %s", text)
+	}
 }
 
 // ── Happy Path ────────────────────────────────────────────────────────────────

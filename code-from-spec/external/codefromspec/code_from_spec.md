@@ -370,5 +370,5 @@ External resources required to operate this framework:
 
 | Resource | URL |
 |---|---|
-| Code generation agent instructions | https://raw.githubusercontent.com/CodeFromSpec/.github/main/framework/AGENT_CODE_GENERATION.md |
+| Code generation agent instructions | https://raw.githubusercontent.com/CodeFromSpec/framework/main/AGENT_CODE_GENERATION.md |
 | `staleness-check` tool | https://github.com/CodeFromSpec/tool-staleness-check/releases/tag/v1.0.2 |

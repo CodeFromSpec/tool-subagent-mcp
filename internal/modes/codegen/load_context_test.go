@@ -1,107 +1,255 @@
-// spec: TEST/tech_design/internal/modes/codegen/tools/load_context@v4
+// spec: TEST/tech_design/internal/modes/codegen/tools/load_context@v5
 
-// Package codegen contains tests for the codegen mode tool handlers.
-// This file tests handleLoadContext, which wraps pre-loaded chain content
-// and returns it as a single MCP text response.
-//
-// Spec reference: ROOT/tech_design/internal/modes/codegen/tools/load_context
-// The handler performs no I/O — content was loaded during Setup.
-// Tests simply verify that whatever is in Target.ChainContent is echoed back
-// verbatim as a success MCP result.
 package codegen
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// TestHandleLoadContext_ReturnsChainContent verifies the happy path:
-// a Target with a non-empty ChainContent produces a success MCP result
-// whose text equals ChainContent exactly.
-//
-// Spec step: "Returns pre-loaded chain content"
-func TestHandleLoadContext_ReturnsChainContent(t *testing.T) {
-	// Arrange: build a Target with a known chain content string.
-	// The handler should return this verbatim without any modification.
-	target := &Target{
-		ChainContent: "<<<FILE_abc>>>\nnode: ROOT\npath: code-from-spec/spec/_node.md\n\nhello world\n<<<END_FILE_abc>>>",
-	}
-
-	// Act: obtain the closure from handleLoadContext and invoke it.
-	// The closure captures target; ctx and req are unused by this handler.
-	handler := handleLoadContext(target)
-	result, _, err := handler(context.Background(), &mcp.CallToolRequest{}, struct{}{})
-
-	// Assert: no Go-level error (catastrophic failures only use that path).
+// invokeLoadContext calls handleLoadContext with the given logical name.
+// It resets currentTarget to nil before each call so tests are independent.
+func invokeLoadContext(t *testing.T, logicalName string) *mcp.CallToolResult {
+	t.Helper()
+	currentTarget = nil
+	t.Cleanup(func() { currentTarget = nil })
+	result, _, err := handleLoadContext(context.Background(), &mcp.CallToolRequest{}, LoadContextArgs{LogicalName: logicalName})
 	if err != nil {
-		t.Fatalf("unexpected Go error: %v", err)
+		t.Fatalf("handleLoadContext returned unexpected Go error: %v", err)
 	}
-
-	// Assert: result must not be nil and must not be an MCP-level error.
 	if result == nil {
-		t.Fatal("expected non-nil CallToolResult")
+		t.Fatal("handleLoadContext returned nil result")
 	}
-	if result.IsError {
-		t.Fatalf("expected success result, got IsError=true with content: %v", result.Content)
-	}
+	return result
+}
 
-	// Assert: exactly one content entry of type *mcp.TextContent.
-	if len(result.Content) != 1 {
-		t.Fatalf("expected 1 content entry, got %d", len(result.Content))
+func loadContextText(t *testing.T, result *mcp.CallToolResult) string {
+	t.Helper()
+	if len(result.Content) == 0 {
+		t.Fatal("result has no content entries")
 	}
-	textContent, ok := result.Content[0].(*mcp.TextContent)
+	tc, ok := result.Content[0].(*mcp.TextContent)
 	if !ok {
 		t.Fatalf("expected *mcp.TextContent, got %T", result.Content[0])
 	}
+	return tc.Text
+}
 
-	// Assert: the text equals the original ChainContent without alteration.
-	if textContent.Text != target.ChainContent {
-		t.Errorf("text mismatch:\n  got:  %q\n  want: %q", textContent.Text, target.ChainContent)
+// ── Happy Path ────────────────────────────────────────────────────────────────
+
+// TestHandleLoadContext_ValidRootLeafNode verifies the basic happy path:
+// a valid ROOT/ leaf node returns chain content and sets currentTarget.
+func TestHandleLoadContext_ValidRootLeafNode(t *testing.T) {
+	root := t.TempDir()
+	buildMinimalSpecTree(t, root, "internal/foo/foo.go")
+	restore := chdirTo(t, root)
+	defer restore()
+
+	result := invokeLoadContext(t, "ROOT/a")
+
+	if result.IsError {
+		t.Fatalf("expected success, got tool error: %s", loadContextText(t, result))
+	}
+	text := loadContextText(t, result)
+	if text == "" {
+		t.Error("expected non-empty chain content")
+	}
+	if currentTarget == nil {
+		t.Error("expected currentTarget to be set after successful load_context")
+	}
+	if currentTarget.LogicalName != "ROOT/a" {
+		t.Errorf("currentTarget.LogicalName = %q, want %q", currentTarget.LogicalName, "ROOT/a")
 	}
 }
 
-// TestHandleLoadContext_EmptyChainContent verifies that an empty ChainContent
-// is returned as a success result with an empty text string — not an error.
-//
-// Spec step: "Empty chain content"
-// Rationale: the handler's contract is to echo whatever is in the Target;
-// empty is a valid (if unusual) value and must not be treated as an error.
-func TestHandleLoadContext_EmptyChainContent(t *testing.T) {
-	// Arrange: Target with an explicitly empty chain.
-	target := &Target{
-		ChainContent: "",
+// TestHandleLoadContext_ValidTestNode verifies that a TEST/ node resolves correctly.
+func TestHandleLoadContext_ValidTestNode(t *testing.T) {
+	root := t.TempDir()
+	writeSpecFile(t, root, "code-from-spec/spec/_node.md", rootNodeContent)
+	writeSpecFile(t, root, "code-from-spec/spec/a/_node.md", "---\nversion: 1\n---\n# ROOT/a\n")
+	writeSpecFile(t, root, "code-from-spec/spec/a/default.test.md",
+		"---\nversion: 1\nimplements:\n  - internal/a/a_test.go\n---\n# TEST/a\n")
+	restore := chdirTo(t, root)
+	defer restore()
+
+	result := invokeLoadContext(t, "TEST/a")
+
+	if result.IsError {
+		t.Fatalf("expected success, got tool error: %s", loadContextText(t, result))
 	}
+	if currentTarget == nil {
+		t.Error("expected currentTarget to be set")
+	}
+}
 
-	// Act: invoke the closure.
-	handler := handleLoadContext(target)
-	result, _, err := handler(context.Background(), &mcp.CallToolRequest{}, struct{}{})
+// TestHandleLoadContext_NodeWithDependencies verifies that chain includes
+// external dependency files.
+func TestHandleLoadContext_NodeWithDependencies(t *testing.T) {
+	root := t.TempDir()
+	writeSpecFile(t, root, "code-from-spec/spec/_node.md", rootNodeContent)
+	writeSpecFile(t, root, "code-from-spec/spec/a/_node.md", `---
+version: 1
+depends_on:
+  - path: EXTERNAL/db
+    version: 1
+implements:
+  - internal/baz/baz.go
+---
+# ROOT/a
+`)
+	writeSpecFile(t, root, "code-from-spec/external/db/_external.md", "---\nversion: 1\n---\n# EXTERNAL/db\n")
+	writeSpecFile(t, root, "code-from-spec/external/db/schema.sql", "CREATE TABLE t (id INT);")
+	restore := chdirTo(t, root)
+	defer restore()
 
-	// Assert: no Go-level error.
+	result := invokeLoadContext(t, "ROOT/a")
+
+	if result.IsError {
+		t.Fatalf("expected success, got tool error: %s", loadContextText(t, result))
+	}
+	text := loadContextText(t, result)
+	if !strings.Contains(text, "schema.sql") {
+		t.Error("chain content should include external dependency file schema.sql")
+	}
+}
+
+// TestHandleLoadContext_ChainContentUsesHeredocFormat verifies the delimiter format.
+func TestHandleLoadContext_ChainContentUsesHeredocFormat(t *testing.T) {
+	root := t.TempDir()
+	buildMinimalSpecTree(t, root, "internal/foo/foo.go")
+	restore := chdirTo(t, root)
+	defer restore()
+
+	result := invokeLoadContext(t, "ROOT/a")
+
+	if result.IsError {
+		t.Fatalf("expected success, got tool error: %s", loadContextText(t, result))
+	}
+	text := loadContextText(t, result)
+	if !strings.Contains(text, "<<<FILE_") {
+		t.Error("chain content must contain <<<FILE_ delimiter")
+	}
+	if !strings.Contains(text, "<<<END_FILE_") {
+		t.Error("chain content must contain <<<END_FILE_ delimiter")
+	}
+	if !strings.Contains(text, "node:") {
+		t.Error("chain content must contain node: header")
+	}
+	if !strings.Contains(text, "path:") {
+		t.Error("chain content must contain path: header")
+	}
+}
+
+// ── Failure Cases ─────────────────────────────────────────────────────────────
+
+// TestHandleLoadContext_AlreadyCalled verifies that calling load_context twice
+// returns a tool error.
+func TestHandleLoadContext_AlreadyCalled(t *testing.T) {
+	currentTarget = &Target{LogicalName: "ROOT/already"}
+	t.Cleanup(func() { currentTarget = nil })
+
+	result, _, err := handleLoadContext(context.Background(), &mcp.CallToolRequest{}, LoadContextArgs{LogicalName: "ROOT/a"})
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
 	}
+	if !result.IsError {
+		t.Fatal("expected tool error when load_context already called")
+	}
+	if !strings.Contains(loadContextText(t, result), "already called") {
+		t.Errorf("error must mention 'already called', got: %s", loadContextText(t, result))
+	}
+}
 
-	// Assert: result present and not an MCP-level error.
-	if result == nil {
-		t.Fatal("expected non-nil CallToolResult")
+// TestHandleLoadContext_InvalidPrefix verifies that EXTERNAL/ prefix is rejected.
+func TestHandleLoadContext_InvalidPrefix(t *testing.T) {
+	currentTarget = nil
+	result, _, err := handleLoadContext(context.Background(), &mcp.CallToolRequest{}, LoadContextArgs{LogicalName: "EXTERNAL/something"})
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
 	}
-	if result.IsError {
-		t.Fatalf("expected success result for empty content, got IsError=true")
+	if !result.IsError {
+		t.Fatal("expected tool error for EXTERNAL/ prefix")
 	}
+	text := loadContextText(t, result)
+	if !strings.Contains(text, "ROOT/ or TEST/") {
+		t.Errorf("error must mention 'ROOT/ or TEST/', got: %s", text)
+	}
+}
 
-	// Assert: exactly one content entry.
-	if len(result.Content) != 1 {
-		t.Fatalf("expected 1 content entry, got %d", len(result.Content))
-	}
-	textContent, ok := result.Content[0].(*mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected *mcp.TextContent, got %T", result.Content[0])
-	}
+// TestHandleLoadContext_InvalidLogicalName verifies that a nonexistent node
+// returns a tool error.
+func TestHandleLoadContext_InvalidLogicalName(t *testing.T) {
+	root := t.TempDir()
+	restore := chdirTo(t, root)
+	defer restore()
 
-	// Assert: empty string returned as-is.
-	if textContent.Text != "" {
-		t.Errorf("expected empty text, got %q", textContent.Text)
+	result := invokeLoadContext(t, "ROOT/nonexistent")
+
+	if !result.IsError {
+		t.Fatal("expected tool error for nonexistent spec file")
+	}
+}
+
+// TestHandleLoadContext_NoImplements verifies that a node without implements
+// returns a tool error.
+func TestHandleLoadContext_NoImplements(t *testing.T) {
+	root := t.TempDir()
+	writeSpecFile(t, root, "code-from-spec/spec/_node.md", rootNodeContent)
+	writeSpecFile(t, root, "code-from-spec/spec/a/_node.md", "---\nversion: 1\n---\n# ROOT/a\n")
+	restore := chdirTo(t, root)
+	defer restore()
+
+	result := invokeLoadContext(t, "ROOT/a")
+
+	if !result.IsError {
+		t.Fatal("expected tool error for node with no implements")
+	}
+	if !strings.Contains(loadContextText(t, result), "has no implements") {
+		t.Errorf("error must mention 'has no implements', got: %s", loadContextText(t, result))
+	}
+}
+
+// TestHandleLoadContext_InvalidImplementsPath verifies that a traversal path
+// in implements returns a tool error.
+func TestHandleLoadContext_InvalidImplementsPath(t *testing.T) {
+	root := t.TempDir()
+	writeSpecFile(t, root, "code-from-spec/spec/_node.md", rootNodeContent)
+	writeSpecFile(t, root, "code-from-spec/spec/a/_node.md",
+		"---\nversion: 1\nimplements:\n  - ../../etc/passwd\n---\n# ROOT/a\n")
+	restore := chdirTo(t, root)
+	defer restore()
+
+	result := invokeLoadContext(t, "ROOT/a")
+
+	if !result.IsError {
+		t.Fatal("expected tool error for traversal implements path")
+	}
+}
+
+// TestHandleLoadContext_UnresolvableDependency verifies that a missing
+// dependency returns a tool error.
+func TestHandleLoadContext_UnresolvableDependency(t *testing.T) {
+	root := t.TempDir()
+	writeSpecFile(t, root, "code-from-spec/spec/_node.md", rootNodeContent)
+	writeSpecFile(t, root, "code-from-spec/spec/a/_node.md", `---
+version: 1
+depends_on:
+  - path: ROOT/b
+    version: 1
+implements:
+  - internal/foo/foo.go
+---
+# ROOT/a
+`)
+	restore := chdirTo(t, root)
+	defer restore()
+
+	result := invokeLoadContext(t, "ROOT/a")
+
+	if !result.IsError {
+		t.Fatal("expected tool error for unresolvable dependency")
 	}
 }

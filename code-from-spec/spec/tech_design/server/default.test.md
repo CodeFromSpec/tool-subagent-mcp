@@ -1,6 +1,6 @@
 ---
-version: 8
-parent_version: 25
+version: 9
+parent_version: 26
 implements:
   - cmd/subagent-mcp/main_test.go
 ---
@@ -56,13 +56,14 @@ Expect: exit 0, stdout contains the codegen help message.
 
 ### Codegen mode sets correct server instructions
 
-Run the binary with `codegen` and a valid logical name using
-`mcp.CommandTransport`. Build the command with `cmd.Dir` set to
-the project root (derived by walking up two levels from `os.Getwd()`).
+Run the binary with `codegen` using `mcp.CommandTransport`.
+Build the command with `cmd.Dir` set to the project root
+(derived by walking up two levels from `os.Getwd()`).
 Connect an `mcp.Client` to the server using `client.Connect`.
 
-After the connection is established, call `cs.InitializeResult()`
-and assert that `.Instructions` matches `codegen.Instructions`.
+After the connection is established, call
+`cs.InitializeResult()` and assert that `.Instructions`
+matches `codegen.Instructions`.
 
 Close the session and wait for the subprocess to exit.
 
@@ -84,8 +85,9 @@ Run the binary with `unknownmode`.
 Expect: exit 1, stderr contains the usage message
 and lists valid modes.
 
-### Codegen setup error prints to stderr
+### Codegen with extra arguments prints error to stderr
 
-Run the binary with `codegen` and no logical name.
+Run the binary with `codegen extraarg`.
 
-Expect: exit 1, stderr contains the setup error.
+Expect: exit 1, stderr contains
+`"codegen mode does not accept arguments"`.

@@ -6,9 +6,9 @@ This project follows the **Code from Spec** methodology. All code is generated f
 
 Before working on this project, read the framework documentation:
 
-- Overview: `https://raw.githubusercontent.com/CodeFromSpec/.github/refs/heads/main/README.md`
-- Specification structure and versioning: `https://raw.githubusercontent.com/CodeFromSpec/.github/refs/heads/main/framework/CODE_FROM_SPEC.md`
-- Code generation rules: `https://raw.githubusercontent.com/CodeFromSpec/.github/refs/heads/main/framework/AGENT_CODE_GENERATION.md`
+- Overview: `https://raw.githubusercontent.com/CodeFromSpec/framework/refs/heads/main/README.md`
+- Specification structure and versioning: `https://raw.githubusercontent.com/CodeFromSpec/framework/refs/heads/main/framework/CODE_FROM_SPEC.md`
+- Code generation rules: `https://raw.githubusercontent.com/CodeFromSpec/framework/refs/heads/main/framework/AGENT_CODE_GENERATION.md`
 
 ## Key Rules
 

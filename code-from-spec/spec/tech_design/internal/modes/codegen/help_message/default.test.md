@@ -1,6 +1,6 @@
 ---
 version: 2
-parent_version: 2
+parent_version: 3
 implements:
   - internal/modes/codegen/help_message_test.go
 ---

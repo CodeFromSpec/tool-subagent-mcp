@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/internal/logical_names@v21
+// spec: ROOT/tech_design/internal/logical_names@v22
 
 // Package logicalnames centralizes conversion between logical names and
 // file paths, and provides parent-derivation utilities for the Code from

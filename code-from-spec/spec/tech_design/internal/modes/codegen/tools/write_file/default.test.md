@@ -1,6 +1,6 @@
 ---
-version: 4
-parent_version: 25
+version: 5
+parent_version: 26
 implements:
   - internal/modes/codegen/write_file_test.go
 ---
@@ -10,15 +10,15 @@ implements:
 ## Context
 
 Each test uses `t.TempDir()` as the project root and working
-directory. A `Target` is created with a known `Frontmatter`
-containing an `Implements` list. The handler is called with
-`WriteFileArgs`.
+directory. A `Target` is set as `currentTarget` with a known
+`Frontmatter` containing an `Implements` list. The handler is
+called with `WriteFileArgs`.
 
 ## Happy Path
 
 ### Writes file successfully
 
-Create a `Target` with `Implements: ["output/file.go"]`.
+Set `currentTarget` with `Implements: ["output/file.go"]`.
 Call the handler with `Path: "output/file.go"` and
 `Content: "package main"`.
 
@@ -27,7 +27,7 @@ Verify the file exists on disk with the correct content.
 
 ### Creates intermediate directories
 
-Create a `Target` with
+Set `currentTarget` with
 `Implements: ["deep/nested/dir/file.go"]`.
 Call the handler with `Path: "deep/nested/dir/file.go"`.
 
@@ -35,7 +35,7 @@ Expect: success. Directories created automatically.
 
 ### Overwrites existing file
 
-Create a `Target` with `Implements: ["output/file.go"]`.
+Set `currentTarget` with `Implements: ["output/file.go"]`.
 Write an initial file at that path. Call the handler with
 new content.
 
@@ -43,9 +43,16 @@ Expect: success. File content replaced.
 
 ## Failure Cases
 
+### No target loaded
+
+Set `currentTarget = nil`. Call the handler with any path.
+
+Expect: tool error containing
+`"load_context must be called before write_file"`.
+
 ### Path not in implements
 
-Create a `Target` with `Implements: ["allowed/file.go"]`.
+Set `currentTarget` with `Implements: ["allowed/file.go"]`.
 Call the handler with `Path: "other/file.go"`.
 
 Expect: tool error containing `"path not allowed"` and
@@ -53,7 +60,7 @@ listing the allowed paths.
 
 ### Path traversal attempt
 
-Create a `Target` with `Implements: ["../../etc/passwd"]`.
+Set `currentTarget` with `Implements: ["../../etc/passwd"]`.
 Call the handler with `Path: "../../etc/passwd"`.
 
 Expect: tool error from `ValidatePath`.
