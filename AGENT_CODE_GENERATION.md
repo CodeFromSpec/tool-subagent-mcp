@@ -6,9 +6,9 @@ This document outlines procedures for an AI code generation agent that implement
 
 The orchestrator provides the logical name of the target node in the agent's prompt.
 
-1. Call `load_context` with that logical name. This returns all relevant spec files concatenated in a single response. Must be called exactly once.
+1. Call `load_chain` with that logical name. This returns all relevant spec files concatenated in a single response. Must be called exactly once.
 2. Generate the source files declared in the node's `implements` list from the returned context.
-3. Write each file using the `Write` tool.
+3. Write each file using the `write_file` tool.
 
 ## Key Principles
 
@@ -20,7 +20,7 @@ The orchestrator provides the logical name of the target node in the agent's pro
 
 **Respect all constraints.** Every rule and convention provided is mandatory; nothing is optional.
 
-**Use only provided input.** The agent may only use context returned by `load_context` and the content of existing target files. No external searches or assumptions.
+**Use only provided input.** The agent may only use context returned by `load_chain` and the content of existing target files. No external searches or assumptions.
 
 ## Specification Comment Format
 
@@ -37,7 +37,7 @@ The logical name identifies the spec node (e.g., `ROOT/architecture/backend/conf
 For each target file:
 
 1. **Check existence** — Does the file already exist?
-2. **New file** — Generate from scratch using the context returned by `load_context`.
+2. **New file** — Generate from scratch using the context returned by `load_chain`.
 3. **Existing file** — Compare the `// spec:` version comment:
    - Versions match → No action needed.
    - Versions differ → Update comment only if code already complies; otherwise make minimal modifications to satisfy the current spec.
