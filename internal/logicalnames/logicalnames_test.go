@@ -1,281 +1,206 @@
 // spec: TEST/tech_design/internal/logical_names@v12
-package logicalnames_test
 
-import (
-	"testing"
+package logicalnames
 
-	"github.com/CodeFromSpec/tool-subagent-mcp/internal/logicalnames"
-)
+import "testing"
 
-// ---------------------------------------------------------------------------
-// PathFromLogicalName tests
-// Spec ref: ROOT/tech_design/internal/logical_names § "PathFromLogicalName"
-// and TEST/tech_design/internal/logical_names § "PathFromLogicalName"
-// ---------------------------------------------------------------------------
+// --- PathFromLogicalName tests ---
 
-func TestPathFromLogicalName(t *testing.T) {
-	tests := []struct {
-		name        string
-		input       string
-		wantPath    string
-		wantOK      bool
-	}{
-		// ROOT → code-from-spec/spec/_node.md
-		{
-			name:     "ROOT",
-			input:    "ROOT",
-			wantPath: "code-from-spec/spec/_node.md",
-			wantOK:   true,
-		},
-		// ROOT with path → code-from-spec/spec/<path>/_node.md
-		{
-			name:     "ROOT with path",
-			input:    "ROOT/domain/modes",
-			wantPath: "code-from-spec/spec/domain/modes/_node.md",
-			wantOK:   true,
-		},
-		// TEST without path → code-from-spec/spec/default.test.md
-		{
-			name:     "TEST without path",
-			input:    "TEST",
-			wantPath: "code-from-spec/spec/default.test.md",
-			wantOK:   true,
-		},
-		// TEST canonical → code-from-spec/spec/<path>/default.test.md
-		{
-			name:     "TEST canonical",
-			input:    "TEST/domain/config",
-			wantPath: "code-from-spec/spec/domain/config/default.test.md",
-			wantOK:   true,
-		},
-		// TEST named → code-from-spec/spec/<path>/<name>.test.md
-		{
-			name:     "TEST named",
-			input:    "TEST/domain/config(edge_cases)",
-			wantPath: "code-from-spec/spec/domain/config/edge_cases.test.md",
-			wantOK:   true,
-		},
-		// EXTERNAL/<name> → code-from-spec/external/<name>/_external.md
-		{
-			name:     "EXTERNAL",
-			input:    "EXTERNAL/codefromspec",
-			wantPath: "code-from-spec/external/codefromspec/_external.md",
-			wantOK:   true,
-		},
-		// Unrecognized prefix → ("", false)
-		{
-			name:     "Unrecognized prefix",
-			input:    "UNKNOWN/something",
-			wantPath: "",
-			wantOK:   false,
-		},
-		// Empty string → ("", false)
-		{
-			name:     "Empty string",
-			input:    "",
-			wantPath: "",
-			wantOK:   false,
-		},
-		// EXTERNAL without name → ("", false)
-		{
-			name:     "EXTERNAL without name",
-			input:    "EXTERNAL",
-			wantPath: "",
-			wantOK:   false,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			gotPath, gotOK := logicalnames.PathFromLogicalName(tc.input)
-			if gotOK != tc.wantOK {
-				t.Errorf("PathFromLogicalName(%q): ok = %v, want %v", tc.input, gotOK, tc.wantOK)
-			}
-			if gotPath != tc.wantPath {
-				t.Errorf("PathFromLogicalName(%q): path = %q, want %q", tc.input, gotPath, tc.wantPath)
-			}
-		})
+func TestPathFromLogicalName_ROOT(t *testing.T) {
+	got, ok := PathFromLogicalName("ROOT")
+	if !ok || got != "code-from-spec/spec/_node.md" {
+		t.Errorf("PathFromLogicalName(%q) = (%q, %v), want (%q, true)", "ROOT", got, ok, "code-from-spec/spec/_node.md")
 	}
 }
 
-// ---------------------------------------------------------------------------
-// HasParent tests
-// Spec ref: ROOT/tech_design/internal/logical_names § "HasParent"
-// and TEST/tech_design/internal/logical_names § "HasParent"
-// ---------------------------------------------------------------------------
-
-func TestHasParent(t *testing.T) {
-	tests := []struct {
-		name          string
-		input         string
-		wantHasParent bool
-		wantOK        bool
-	}{
-		// ROOT → no parent, valid
-		{
-			name:          "ROOT",
-			input:         "ROOT",
-			wantHasParent: false,
-			wantOK:        true,
-		},
-		// ROOT with path → has parent, valid
-		{
-			name:          "ROOT with path",
-			input:         "ROOT/domain/config",
-			wantHasParent: true,
-			wantOK:        true,
-		},
-		// TEST without path → has parent (parent is ROOT), valid
-		{
-			name:          "TEST without path",
-			input:         "TEST",
-			wantHasParent: true,
-			wantOK:        true,
-		},
-		// TEST with path → has parent, valid
-		{
-			name:          "TEST with path",
-			input:         "TEST/domain/config",
-			wantHasParent: true,
-			wantOK:        true,
-		},
-		// TEST named → has parent, valid
-		{
-			name:          "TEST named",
-			input:         "TEST/domain/config(edge_cases)",
-			wantHasParent: true,
-			wantOK:        true,
-		},
-		// EXTERNAL/<name> → no parent, valid
-		{
-			name:          "EXTERNAL",
-			input:         "EXTERNAL/codefromspec",
-			wantHasParent: false,
-			wantOK:        true,
-		},
-		// EXTERNAL without name → not valid
-		{
-			name:          "EXTERNAL without name",
-			input:         "EXTERNAL",
-			wantHasParent: false,
-			wantOK:        false,
-		},
-		// Empty string → not valid
-		{
-			name:          "Empty string",
-			input:         "",
-			wantHasParent: false,
-			wantOK:        false,
-		},
-		// Unrecognized prefix → not valid
-		{
-			name:          "Unrecognized prefix",
-			input:         "UNKNOWN/something",
-			wantHasParent: false,
-			wantOK:        false,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			gotHasParent, gotOK := logicalnames.HasParent(tc.input)
-			if gotOK != tc.wantOK {
-				t.Errorf("HasParent(%q): ok = %v, want %v", tc.input, gotOK, tc.wantOK)
-			}
-			if gotHasParent != tc.wantHasParent {
-				t.Errorf("HasParent(%q): hasParent = %v, want %v", tc.input, gotHasParent, tc.wantHasParent)
-			}
-		})
+func TestPathFromLogicalName_ROOTWithPath(t *testing.T) {
+	got, ok := PathFromLogicalName("ROOT/payments/processor")
+	if !ok || got != "code-from-spec/spec/payments/processor/_node.md" {
+		t.Errorf("PathFromLogicalName(%q) = (%q, %v), want (%q, true)", "ROOT/payments/processor", got, ok, "code-from-spec/spec/payments/processor/_node.md")
 	}
 }
 
-// ---------------------------------------------------------------------------
-// ParentLogicalName tests
-// Spec ref: ROOT/tech_design/internal/logical_names § "ParentLogicalName"
-// and TEST/tech_design/internal/logical_names § "ParentLogicalName"
-// ---------------------------------------------------------------------------
-
-func TestParentLogicalName(t *testing.T) {
-	tests := []struct {
-		name       string
-		input      string
-		wantParent string
-		wantOK     bool
-	}{
-		// ROOT/x → ROOT
-		{
-			name:       "ROOT/x — parent is ROOT",
-			input:      "ROOT/domain",
-			wantParent: "ROOT",
-			wantOK:     true,
-		},
-		// ROOT/x/y → ROOT/x
-		{
-			name:       "ROOT/x/y — parent is ROOT/x",
-			input:      "ROOT/domain/config",
-			wantParent: "ROOT/domain",
-			wantOK:     true,
-		},
-		// ROOT/x/y/z → ROOT/x/y
-		{
-			name:       "ROOT/x/y/z — parent is ROOT/x/y",
-			input:      "ROOT/tech_design/logical_names",
-			wantParent: "ROOT/tech_design",
-			wantOK:     true,
-		},
-		// TEST → ROOT
-		{
-			name:       "TEST without path — parent is ROOT",
-			input:      "TEST",
-			wantParent: "ROOT",
-			wantOK:     true,
-		},
-		// TEST/x → ROOT/x
-		{
-			name:       "TEST/x — parent is ROOT/x",
-			input:      "TEST/domain/config",
-			wantParent: "ROOT/domain/config",
-			wantOK:     true,
-		},
-		// TEST/x(name) → ROOT/x
-		{
-			name:       "TEST/x(name) — parent is ROOT/x",
-			input:      "TEST/domain/config(edge_cases)",
-			wantParent: "ROOT/domain/config",
-			wantOK:     true,
-		},
-		// ROOT has no parent → ("", false)
-		{
-			name:       "ROOT has no parent",
-			input:      "ROOT",
-			wantParent: "",
-			wantOK:     false,
-		},
-		// EXTERNAL has no parent → ("", false)
-		{
-			name:       "EXTERNAL has no parent",
-			input:      "EXTERNAL/codefromspec",
-			wantParent: "",
-			wantOK:     false,
-		},
-		// Invalid input → ("", false)
-		{
-			name:       "Invalid input",
-			input:      "",
-			wantParent: "",
-			wantOK:     false,
-		},
+func TestPathFromLogicalName_TESTWithoutPath(t *testing.T) {
+	got, ok := PathFromLogicalName("TEST")
+	if !ok || got != "code-from-spec/spec/default.test.md" {
+		t.Errorf("PathFromLogicalName(%q) = (%q, %v), want (%q, true)", "TEST", got, ok, "code-from-spec/spec/default.test.md")
 	}
+}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			gotParent, gotOK := logicalnames.ParentLogicalName(tc.input)
-			if gotOK != tc.wantOK {
-				t.Errorf("ParentLogicalName(%q): ok = %v, want %v", tc.input, gotOK, tc.wantOK)
-			}
-			if gotParent != tc.wantParent {
-				t.Errorf("ParentLogicalName(%q): parent = %q, want %q", tc.input, gotParent, tc.wantParent)
-			}
-		})
+func TestPathFromLogicalName_TESTCanonical(t *testing.T) {
+	got, ok := PathFromLogicalName("TEST/domain/config")
+	if !ok || got != "code-from-spec/spec/domain/config/default.test.md" {
+		t.Errorf("PathFromLogicalName(%q) = (%q, %v), want (%q, true)", "TEST/domain/config", got, ok, "code-from-spec/spec/domain/config/default.test.md")
+	}
+}
+
+func TestPathFromLogicalName_TESTNamed(t *testing.T) {
+	got, ok := PathFromLogicalName("TEST/domain/config(edge_cases)")
+	if !ok || got != "code-from-spec/spec/domain/config/edge_cases.test.md" {
+		t.Errorf("PathFromLogicalName(%q) = (%q, %v), want (%q, true)", "TEST/domain/config(edge_cases)", got, ok, "code-from-spec/spec/domain/config/edge_cases.test.md")
+	}
+}
+
+func TestPathFromLogicalName_EXTERNAL(t *testing.T) {
+	got, ok := PathFromLogicalName("EXTERNAL/codefromspec")
+	if !ok || got != "code-from-spec/external/codefromspec/_external.md" {
+		t.Errorf("PathFromLogicalName(%q) = (%q, %v), want (%q, true)", "EXTERNAL/codefromspec", got, ok, "code-from-spec/external/codefromspec/_external.md")
+	}
+}
+
+func TestPathFromLogicalName_UnrecognizedPrefix(t *testing.T) {
+	got, ok := PathFromLogicalName("UNKNOWN/something")
+	if ok || got != "" {
+		t.Errorf("PathFromLogicalName(%q) = (%q, %v), want (%q, false)", "UNKNOWN/something", got, ok, "")
+	}
+}
+
+func TestPathFromLogicalName_EmptyString(t *testing.T) {
+	got, ok := PathFromLogicalName("")
+	if ok || got != "" {
+		t.Errorf("PathFromLogicalName(%q) = (%q, %v), want (%q, false)", "", got, ok, "")
+	}
+}
+
+func TestPathFromLogicalName_EXTERNALWithoutName(t *testing.T) {
+	got, ok := PathFromLogicalName("EXTERNAL")
+	if ok || got != "" {
+		t.Errorf("PathFromLogicalName(%q) = (%q, %v), want (%q, false)", "EXTERNAL", got, ok, "")
+	}
+}
+
+// --- HasParent tests ---
+
+func TestHasParent_ROOT(t *testing.T) {
+	hasParent, ok := HasParent("ROOT")
+	if hasParent != false || ok != true {
+		t.Errorf("HasParent(%q) = (%v, %v), want (false, true)", "ROOT", hasParent, ok)
+	}
+}
+
+func TestHasParent_ROOTWithPath(t *testing.T) {
+	hasParent, ok := HasParent("ROOT/domain/config")
+	if hasParent != true || ok != true {
+		t.Errorf("HasParent(%q) = (%v, %v), want (true, true)", "ROOT/domain/config", hasParent, ok)
+	}
+}
+
+func TestHasParent_TESTWithoutPath(t *testing.T) {
+	hasParent, ok := HasParent("TEST")
+	if hasParent != true || ok != true {
+		t.Errorf("HasParent(%q) = (%v, %v), want (true, true)", "TEST", hasParent, ok)
+	}
+}
+
+func TestHasParent_TESTWithPath(t *testing.T) {
+	hasParent, ok := HasParent("TEST/domain/config")
+	if hasParent != true || ok != true {
+		t.Errorf("HasParent(%q) = (%v, %v), want (true, true)", "TEST/domain/config", hasParent, ok)
+	}
+}
+
+func TestHasParent_TESTNamed(t *testing.T) {
+	hasParent, ok := HasParent("TEST/domain/config(edge_cases)")
+	if hasParent != true || ok != true {
+		t.Errorf("HasParent(%q) = (%v, %v), want (true, true)", "TEST/domain/config(edge_cases)", hasParent, ok)
+	}
+}
+
+func TestHasParent_EXTERNAL(t *testing.T) {
+	hasParent, ok := HasParent("EXTERNAL/codefromspec")
+	if hasParent != false || ok != true {
+		t.Errorf("HasParent(%q) = (%v, %v), want (false, true)", "EXTERNAL/codefromspec", hasParent, ok)
+	}
+}
+
+func TestHasParent_EXTERNALWithoutName(t *testing.T) {
+	hasParent, ok := HasParent("EXTERNAL")
+	if hasParent != false || ok != false {
+		t.Errorf("HasParent(%q) = (%v, %v), want (false, false)", "EXTERNAL", hasParent, ok)
+	}
+}
+
+func TestHasParent_EmptyString(t *testing.T) {
+	hasParent, ok := HasParent("")
+	if hasParent != false || ok != false {
+		t.Errorf("HasParent(%q) = (%v, %v), want (false, false)", "", hasParent, ok)
+	}
+}
+
+func TestHasParent_UnrecognizedPrefix(t *testing.T) {
+	hasParent, ok := HasParent("UNKNOWN/something")
+	if hasParent != false || ok != false {
+		t.Errorf("HasParent(%q) = (%v, %v), want (false, false)", "UNKNOWN/something", hasParent, ok)
+	}
+}
+
+// --- ParentLogicalName tests ---
+
+func TestParentLogicalName_ROOTx_ParentIsROOT(t *testing.T) {
+	// ROOT/x -> parent is ROOT
+	got, ok := ParentLogicalName("ROOT/domain")
+	if !ok || got != "ROOT" {
+		t.Errorf("ParentLogicalName(%q) = (%q, %v), want (%q, true)", "ROOT/domain", got, ok, "ROOT")
+	}
+}
+
+func TestParentLogicalName_ROOTxy_ParentIsROOTx(t *testing.T) {
+	// ROOT/x/y -> parent is ROOT/x
+	got, ok := ParentLogicalName("ROOT/domain/config")
+	if !ok || got != "ROOT/domain" {
+		t.Errorf("ParentLogicalName(%q) = (%q, %v), want (%q, true)", "ROOT/domain/config", got, ok, "ROOT/domain")
+	}
+}
+
+func TestParentLogicalName_ROOTxyz_ParentIsROOTxy(t *testing.T) {
+	// ROOT/x/y/z -> parent is ROOT/x/y
+	got, ok := ParentLogicalName("ROOT/tech_design/logical_names")
+	if !ok || got != "ROOT/tech_design" {
+		t.Errorf("ParentLogicalName(%q) = (%q, %v), want (%q, true)", "ROOT/tech_design/logical_names", got, ok, "ROOT/tech_design")
+	}
+}
+
+func TestParentLogicalName_TESTWithoutPath_ParentIsROOT(t *testing.T) {
+	// TEST -> parent is ROOT
+	got, ok := ParentLogicalName("TEST")
+	if !ok || got != "ROOT" {
+		t.Errorf("ParentLogicalName(%q) = (%q, %v), want (%q, true)", "TEST", got, ok, "ROOT")
+	}
+}
+
+func TestParentLogicalName_TESTx_ParentIsROOTx(t *testing.T) {
+	// TEST/x -> parent is ROOT/x
+	got, ok := ParentLogicalName("TEST/domain/config")
+	if !ok || got != "ROOT/domain/config" {
+		t.Errorf("ParentLogicalName(%q) = (%q, %v), want (%q, true)", "TEST/domain/config", got, ok, "ROOT/domain/config")
+	}
+}
+
+func TestParentLogicalName_TESTxName_ParentIsROOTx(t *testing.T) {
+	// TEST/x(name) -> parent is ROOT/x
+	got, ok := ParentLogicalName("TEST/domain/config(edge_cases)")
+	if !ok || got != "ROOT/domain/config" {
+		t.Errorf("ParentLogicalName(%q) = (%q, %v), want (%q, true)", "TEST/domain/config(edge_cases)", got, ok, "ROOT/domain/config")
+	}
+}
+
+func TestParentLogicalName_ROOTHasNoParent(t *testing.T) {
+	got, ok := ParentLogicalName("ROOT")
+	if ok || got != "" {
+		t.Errorf("ParentLogicalName(%q) = (%q, %v), want (%q, false)", "ROOT", got, ok, "")
+	}
+}
+
+func TestParentLogicalName_EXTERNALHasNoParent(t *testing.T) {
+	got, ok := ParentLogicalName("EXTERNAL/codefromspec")
+	if ok || got != "" {
+		t.Errorf("ParentLogicalName(%q) = (%q, %v), want (%q, false)", "EXTERNAL/codefromspec", got, ok, "")
+	}
+}
+
+func TestParentLogicalName_InvalidInput(t *testing.T) {
+	got, ok := ParentLogicalName("")
+	if ok || got != "" {
+		t.Errorf("ParentLogicalName(%q) = (%q, %v), want (%q, false)", "", got, ok, "")
 	}
 }

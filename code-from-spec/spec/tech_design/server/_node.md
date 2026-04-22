@@ -1,11 +1,15 @@
 ---
-version: 30
+version: 34
 parent_version: 14
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 1
   - path: ROOT/tech_design/internal/tools
     version: 3
+  - path: ROOT/tech_design/internal/tools/load_chain
+    version: 34
+  - path: ROOT/tech_design/internal/tools/write_file
+    version: 30
 implements:
   - cmd/subagent-mcp/main.go
 ---
@@ -33,8 +37,12 @@ the MCP server, registers tools, and runs the server.
    message to stderr and exit 1.
 3. Create the MCP server via `mcp.NewServer` with
    `Implementation.Name` = `"subagent-mcp"`.
-4. Register `load_chain` and `write_file` tools on the server
-   using `mcp.AddTool`.
+4. Register tools using `mcp.AddTool`. For each tool, construct
+   the `mcp.Tool` inline with the name and description from the
+   corresponding tool definition spec, and pass the exported
+   handler from the package:
+   - `load_chain.HandleLoadChain` with `LoadChainArgs`
+   - `write_file.HandleWriteFile` with `WriteFileArgs`
 5. Call `s.Run(context.Background(), &mcp.StdioTransport{})`.
 6. If `Run` returns an error, print it to stderr and exit 1.
 7. Otherwise exit 0.

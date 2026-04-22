@@ -1,30 +1,18 @@
-// spec: ROOT/tech_design/server@v30
+// spec: ROOT/tech_design/server@v34
 package main
-
-// Entry point for the subagent-mcp MCP server.
-//
-// Spec ref: ROOT/tech_design/server § "Startup sequence"
-//   1. Handle --help / -h / help  → print usage to stdout, exit 0.
-//   2. Any other argument         → print usage to stderr, exit 1.
-//   3. Create MCP server with Implementation.Name = "subagent-mcp".
-//   4. Register load_chain and write_file tools via mcp.AddTool.
-//   5. Run the server over stdio.
-//   6. On Run error → print to stderr, exit 1.
 
 import (
 	"context"
 	"fmt"
 	"os"
 
-	"github.com/CodeFromSpec/tool-subagent-mcp/internal/load_chain"
-	"github.com/CodeFromSpec/tool-subagent-mcp/internal/write_file"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	load_chain "github.com/CodeFromSpec/tool-subagent-mcp/internal/load_chain"
+	write_file "github.com/CodeFromSpec/tool-subagent-mcp/internal/write_file"
 )
 
-// usageMessage is printed on --help/-h/help (stdout, exit 0) and on an
-// unrecognised argument (stderr, exit 1).
-//
-// Spec ref: ROOT/tech_design/server § "Usage message"
+// usageMessage is the exact text printed for help or invalid arguments.
 const usageMessage = `Usage: subagent-mcp
 
 Starts an MCP server over stdin/stdout for Code from Spec
@@ -51,35 +39,43 @@ MCP configuration example:
 `
 
 func main() {
-	// Spec ref: ROOT/tech_design/server § "Startup sequence" steps 1–2.
+	// Step 1-2: Argument validation.
 	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "--help", "-h", "help":
-			// Help flags: print usage to stdout and exit cleanly.
+		arg := os.Args[1]
+		// Help flags print to stdout and exit 0.
+		if arg == "--help" || arg == "-h" || arg == "help" {
 			fmt.Print(usageMessage)
 			os.Exit(0)
-		default:
-			// Any other argument is an error: print usage to stderr and exit 1.
-			fmt.Fprint(os.Stderr, usageMessage)
-			os.Exit(1)
 		}
+		// Any other argument prints to stderr and exits 1.
+		fmt.Fprint(os.Stderr, usageMessage)
+		os.Exit(1)
 	}
 
-	// Spec ref: ROOT/tech_design/server § "Startup sequence" step 3.
-	// Create the MCP server with the required implementation name.
-	s := mcp.NewServer(&mcp.Implementation{
+	// Step 3: Create the MCP server.
+	server := mcp.NewServer(&mcp.Implementation{
 		Name: "subagent-mcp",
 	}, nil)
 
-	// Spec ref: ROOT/tech_design/server § "Startup sequence" step 4.
-	// Register tools. Each package exposes its own registration function.
-	load_chain.RegisterTool(s)
-	write_file.Register(s)
+	// Step 4: Register tools with their handlers from the
+	// corresponding internal packages.
 
-	// Spec ref: ROOT/tech_design/server § "Startup sequence" steps 5–7.
-	// Run blocks until the client disconnects. Any error is fatal.
-	if err := s.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
-		fmt.Fprintf(os.Stderr, "subagent-mcp: %v\n", err)
+	// Register load_chain tool.
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "load_chain",
+		Description: "Load the spec chain context for a given logical name. Returns all relevant spec files concatenated in a single response.",
+	}, load_chain.HandleLoadChain)
+
+	// Register write_file tool.
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "write_file",
+		Description: "Write a generated source file to disk. The path must be one of the files declared in the node's implements list. Overwrites existing content.",
+	}, write_file.HandleWriteFile)
+
+	// Step 5-7: Run the server over stdio. Blocks until the
+	// client disconnects.
+	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }

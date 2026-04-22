@@ -1,419 +1,482 @@
-// spec: TEST/tech_design/internal/chain_resolver@v10
-
-// Package chainresolver_test contains tests for the ResolveChain function.
-// Spec ref: TEST/tech_design/internal/chain_resolver § "Context"
-// Tests use t.TempDir() to create isolated project structures and call ResolveChain.
-// The working directory is temporarily changed to the temp dir for each test.
-package chainresolver_test
+// spec: TEST/tech_design/internal/chain_resolver@v12
+package chainresolver
 
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
-
-	"github.com/CodeFromSpec/tool-subagent-mcp/internal/chainresolver"
 )
 
-// setupProjectRoot changes the working directory to dir for the duration of
-// the test and restores it afterwards. ResolveChain resolves paths relative
-// to the process working directory (project root).
-func setupProjectRoot(t *testing.T, dir string) {
+// helper: createFile creates a file at the given path (relative to dir)
+// with the given content. It creates all necessary parent directories.
+func createFile(t *testing.T, dir, relPath, content string) {
+	t.Helper()
+	// Always use OS-native path for filesystem operations.
+	full := filepath.Join(dir, filepath.FromSlash(relPath))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", filepath.Dir(full), err)
+	}
+	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", full, err)
+	}
+}
+
+// helper: chdirTemp changes the working directory to dir for the
+// duration of the test. Restores the original directory on cleanup.
+func chdirTemp(t *testing.T, dir string) {
 	t.Helper()
 	orig, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("getwd: %v", err)
 	}
 	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir to temp dir: %v", err)
+		t.Fatalf("chdir %s: %v", dir, err)
 	}
 	t.Cleanup(func() {
-		if err := os.Chdir(orig); err != nil {
-			t.Fatalf("chdir restore: %v", err)
-		}
+		_ = os.Chdir(orig)
 	})
 }
 
-// writeFile writes content to path (relative to cwd), creating parent dirs.
-func writeFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdirall %s: %v", filepath.Dir(path), err)
+// frontmatter generates a minimal frontmatter block with the given
+// version and optional depends_on entries.
+func nodeFrontmatter(version int, parentVersion int, dependsOn string) string {
+	var b strings.Builder
+	b.WriteString("---\n")
+	b.WriteString("version: ")
+	b.WriteString(itoa(version))
+	b.WriteString("\n")
+	if parentVersion > 0 {
+		b.WriteString("parent_version: ")
+		b.WriteString(itoa(parentVersion))
+		b.WriteString("\n")
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("writefile %s: %v", path, err)
-	}
-}
-
-// nodeFile returns a minimal _node.md frontmatter with optional depends_on entries.
-// Spec ref: EXTERNAL/codefromspec § "Frontmatter"
-func nodeFile(version int, dependsOn string) string {
-	fm := "---\nversion: " + itoa(version) + "\n"
 	if dependsOn != "" {
-		fm += dependsOn
+		b.WriteString(dependsOn)
 	}
-	fm += "---\n\n# node\n"
-	return fm
+	b.WriteString("---\n")
+	return b.String()
 }
 
-// testNodeFile returns a minimal test node frontmatter.
-func testNodeFile(version int, dependsOn string) string {
-	fm := "---\nversion: " + itoa(version) + "\nparent_version: 1\n"
-	if dependsOn != "" {
-		fm += dependsOn
-	}
-	fm += "---\n\n# test\n"
-	return fm
-}
-
+// itoa converts an int to its string representation (avoids importing strconv).
 func itoa(n int) string {
 	if n == 0 {
 		return "0"
 	}
-	buf := [20]byte{}
-	pos := len(buf)
+	s := ""
 	for n > 0 {
-		pos--
-		buf[pos] = byte('0' + n%10)
+		s = string(rune('0'+n%10)) + s
 		n /= 10
 	}
-	return string(buf[pos:])
+	return s
 }
 
-// logicalNamesMatch checks that the ChainItems' logical names match expected
-// in the given order.
-func logicalNamesMatch(t *testing.T, label string, items []chainresolver.ChainItem, expected []string) {
-	t.Helper()
-	if len(items) != len(expected) {
-		t.Errorf("%s: got %d items, want %d; got logical names: %v", label, len(items), len(expected), logicalNames(items))
-		return
-	}
-	for i, item := range items {
-		if item.LogicalName != expected[i] {
-			t.Errorf("%s[%d]: got LogicalName=%q, want %q", label, i, item.LogicalName, expected[i])
-		}
-	}
-}
+// --- Happy Path ---
 
-func logicalNames(items []chainresolver.ChainItem) []string {
-	names := make([]string, len(items))
-	for i, item := range items {
-		names[i] = item.LogicalName
-	}
-	return names
-}
-
-// filePathsMatch checks that a ChainItem's FilePaths match expected (sorted).
-func filePathsMatch(t *testing.T, label string, item chainresolver.ChainItem, expected []string) {
-	t.Helper()
-	if len(item.FilePaths) != len(expected) {
-		t.Errorf("%s FilePaths: got %v, want %v", label, item.FilePaths, expected)
-		return
-	}
-	for i, fp := range item.FilePaths {
-		if fp != expected[i] {
-			t.Errorf("%s FilePaths[%d]: got %q, want %q", label, i, fp, expected[i])
-		}
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Happy Path Tests
-// Spec ref: TEST/tech_design/internal/chain_resolver § "Happy Path"
-// ---------------------------------------------------------------------------
-
-// TestLeafNode_AncestorsOnly verifies that a leaf node with no dependencies
-// produces the correct ancestors and target, with no dependencies.
-// Spec ref: TEST/tech_design/internal/chain_resolver § "Leaf node — ancestors only, no dependencies"
-func TestLeafNode_AncestorsOnly(t *testing.T) {
+// TestLeafNodeAncestorsOnly verifies that a leaf node with no
+// dependencies returns only ancestors and the target.
+func TestLeafNodeAncestorsOnly(t *testing.T) {
 	dir := t.TempDir()
-	setupProjectRoot(t, dir)
+	chdirTemp(t, dir)
 
-	// Create spec tree: ROOT, ROOT/a, ROOT/a/b
-	writeFile(t, "code-from-spec/spec/_node.md", nodeFile(1, ""))
-	writeFile(t, "code-from-spec/spec/a/_node.md", nodeFile(1, "parent_version: 1\n"))
-	writeFile(t, "code-from-spec/spec/a/b/_node.md", nodeFile(1, "parent_version: 1\n"))
+	// Create spec tree: ROOT, ROOT/a, ROOT/a/b (leaf)
+	createFile(t, dir, "code-from-spec/spec/_node.md",
+		nodeFrontmatter(1, 0, ""))
+	createFile(t, dir, "code-from-spec/spec/a/_node.md",
+		nodeFrontmatter(1, 1, ""))
+	createFile(t, dir, "code-from-spec/spec/a/b/_node.md",
+		nodeFrontmatter(1, 1, ""))
 
-	chain, err := chainresolver.ResolveChain("ROOT/a/b")
+	chain, err := ResolveChain("ROOT/a/b")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Spec ref: § "Leaf node — ancestors only, no dependencies" — Ancestors: ROOT, ROOT/a (sorted)
-	logicalNamesMatch(t, "Ancestors", chain.Ancestors, []string{"ROOT", "ROOT/a"})
+	// Ancestors: ROOT, ROOT/a (sorted alphabetically)
+	if len(chain.Ancestors) != 2 {
+		t.Fatalf("expected 2 ancestors, got %d", len(chain.Ancestors))
+	}
+	if chain.Ancestors[0].LogicalName != "ROOT" {
+		t.Errorf("ancestors[0] = %q, want ROOT", chain.Ancestors[0].LogicalName)
+	}
+	if chain.Ancestors[1].LogicalName != "ROOT/a" {
+		t.Errorf("ancestors[1] = %q, want ROOT/a", chain.Ancestors[1].LogicalName)
+	}
+
 	// Target: ROOT/a/b
 	if chain.Target.LogicalName != "ROOT/a/b" {
-		t.Errorf("Target.LogicalName: got %q, want %q", chain.Target.LogicalName, "ROOT/a/b")
+		t.Errorf("target = %q, want ROOT/a/b", chain.Target.LogicalName)
 	}
+	if len(chain.Target.FilePaths) != 1 || chain.Target.FilePaths[0] != "code-from-spec/spec/a/b/_node.md" {
+		t.Errorf("target file paths = %v, want [code-from-spec/spec/a/b/_node.md]", chain.Target.FilePaths)
+	}
+
 	// Dependencies: empty
 	if len(chain.Dependencies) != 0 {
-		t.Errorf("Dependencies: got %d, want 0", len(chain.Dependencies))
+		t.Errorf("expected 0 dependencies, got %d", len(chain.Dependencies))
 	}
 }
 
-// TestLeafNode_WithROOTDependency verifies that a leaf node with a ROOT/ dependency
-// has that dependency resolved in Dependencies.
-// Spec ref: TEST/tech_design/internal/chain_resolver § "Leaf node — with ROOT/ dependency"
-func TestLeafNode_WithROOTDependency(t *testing.T) {
+// TestLeafNodeWithRootDependency verifies that a ROOT/ dependency
+// is resolved correctly.
+func TestLeafNodeWithRootDependency(t *testing.T) {
 	dir := t.TempDir()
-	setupProjectRoot(t, dir)
+	chdirTemp(t, dir)
 
-	// ROOT/a depends_on ROOT/b
-	dependsOn := "depends_on:\n  - path: ROOT/b\n    version: 1\n"
-	writeFile(t, "code-from-spec/spec/_node.md", nodeFile(1, ""))
-	writeFile(t, "code-from-spec/spec/a/_node.md", nodeFile(1, "parent_version: 1\n"+dependsOn))
-	writeFile(t, "code-from-spec/spec/b/_node.md", nodeFile(1, "parent_version: 1\n"))
+	// Create spec tree: ROOT, ROOT/a (depends on ROOT/b), ROOT/b
+	createFile(t, dir, "code-from-spec/spec/_node.md",
+		nodeFrontmatter(1, 0, ""))
+	createFile(t, dir, "code-from-spec/spec/a/_node.md",
+		nodeFrontmatter(1, 1, "depends_on:\n  - path: ROOT/b\n    version: 1\n"))
+	createFile(t, dir, "code-from-spec/spec/b/_node.md",
+		nodeFrontmatter(1, 1, ""))
 
-	chain, err := chainresolver.ResolveChain("ROOT/a")
+	chain, err := ResolveChain("ROOT/a")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	logicalNamesMatch(t, "Ancestors", chain.Ancestors, []string{"ROOT"})
+	// Ancestors: ROOT
+	if len(chain.Ancestors) != 1 {
+		t.Fatalf("expected 1 ancestor, got %d", len(chain.Ancestors))
+	}
+	if chain.Ancestors[0].LogicalName != "ROOT" {
+		t.Errorf("ancestors[0] = %q, want ROOT", chain.Ancestors[0].LogicalName)
+	}
+
+	// Target: ROOT/a
 	if chain.Target.LogicalName != "ROOT/a" {
-		t.Errorf("Target.LogicalName: got %q, want %q", chain.Target.LogicalName, "ROOT/a")
+		t.Errorf("target = %q, want ROOT/a", chain.Target.LogicalName)
 	}
-	// Spec ref: § "Leaf node — with ROOT/ dependency" — one item ROOT/b with single file path
-	logicalNamesMatch(t, "Dependencies", chain.Dependencies, []string{"ROOT/b"})
+
+	// Dependencies: ROOT/b with single file path
+	if len(chain.Dependencies) != 1 {
+		t.Fatalf("expected 1 dependency, got %d", len(chain.Dependencies))
+	}
+	if chain.Dependencies[0].LogicalName != "ROOT/b" {
+		t.Errorf("dep[0] = %q, want ROOT/b", chain.Dependencies[0].LogicalName)
+	}
 	if len(chain.Dependencies[0].FilePaths) != 1 {
-		t.Errorf("Dependencies[0].FilePaths: got %d, want 1", len(chain.Dependencies[0].FilePaths))
+		t.Fatalf("expected 1 file path for dep ROOT/b, got %d", len(chain.Dependencies[0].FilePaths))
+	}
+	if chain.Dependencies[0].FilePaths[0] != "code-from-spec/spec/b/_node.md" {
+		t.Errorf("dep file path = %q, want code-from-spec/spec/b/_node.md", chain.Dependencies[0].FilePaths[0])
 	}
 }
 
-// TestLeafNode_WithEXTERNALDependency_NoFilter verifies that an EXTERNAL/ dependency
-// without a filter includes _external.md and all files in the dependency folder.
-// Spec ref: TEST/tech_design/internal/chain_resolver § "Leaf node — with EXTERNAL/ dependency, no filter"
-func TestLeafNode_WithEXTERNALDependency_NoFilter(t *testing.T) {
+// TestLeafNodeWithExternalDependencyNoFilter verifies that an
+// EXTERNAL/ dependency without a filter includes all files.
+func TestLeafNodeWithExternalDependencyNoFilter(t *testing.T) {
 	dir := t.TempDir()
-	setupProjectRoot(t, dir)
+	chdirTemp(t, dir)
 
-	dependsOn := "depends_on:\n  - path: EXTERNAL/db\n    version: 1\n"
-	writeFile(t, "code-from-spec/spec/_node.md", nodeFile(1, ""))
-	writeFile(t, "code-from-spec/spec/a/_node.md", nodeFile(1, "parent_version: 1\n"+dependsOn))
+	// Create spec tree: ROOT, ROOT/a (depends on EXTERNAL/db)
+	createFile(t, dir, "code-from-spec/spec/_node.md",
+		nodeFrontmatter(1, 0, ""))
+	createFile(t, dir, "code-from-spec/spec/a/_node.md",
+		nodeFrontmatter(1, 1, "depends_on:\n  - path: EXTERNAL/db\n    version: 1\n"))
 
-	// Create EXTERNAL/db with _external.md and schema.sql
-	writeFile(t, "code-from-spec/external/db/_external.md", "---\nversion: 1\n---\n# EXTERNAL/db\n")
-	writeFile(t, "code-from-spec/external/db/schema.sql", "-- schema\n")
+	// Create external dependency: db with _external.md and schema.sql
+	createFile(t, dir, "code-from-spec/external/db/_external.md",
+		"---\nversion: 1\n---\n# EXTERNAL/db\n")
+	createFile(t, dir, "code-from-spec/external/db/schema.sql",
+		"CREATE TABLE t (id INT);")
 
-	chain, err := chainresolver.ResolveChain("ROOT/a")
+	chain, err := ResolveChain("ROOT/a")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	logicalNamesMatch(t, "Dependencies", chain.Dependencies, []string{"EXTERNAL/db"})
-
+	// Dependencies: EXTERNAL/db with _external.md and schema.sql (sorted)
+	if len(chain.Dependencies) != 1 {
+		t.Fatalf("expected 1 dependency, got %d", len(chain.Dependencies))
+	}
 	dep := chain.Dependencies[0]
-	// Spec ref: § "no filter" — FilePaths contains _external.md and schema.sql (sorted)
-	filePathsMatch(t, "EXTERNAL/db", dep, []string{
+	if dep.LogicalName != "EXTERNAL/db" {
+		t.Errorf("dep = %q, want EXTERNAL/db", dep.LogicalName)
+	}
+	// File paths should be sorted and use forward slashes.
+	expectedPaths := []string{
 		"code-from-spec/external/db/_external.md",
 		"code-from-spec/external/db/schema.sql",
-	})
+	}
+	if len(dep.FilePaths) != len(expectedPaths) {
+		t.Fatalf("expected %d file paths, got %d: %v", len(expectedPaths), len(dep.FilePaths), dep.FilePaths)
+	}
+	for i, want := range expectedPaths {
+		if dep.FilePaths[i] != want {
+			t.Errorf("file path[%d] = %q, want %q", i, dep.FilePaths[i], want)
+		}
+	}
 }
 
-// TestLeafNode_WithEXTERNALDependency_WithFilter verifies that a filter restricts
-// files to those matching the glob patterns (plus _external.md always).
-// Spec ref: TEST/tech_design/internal/chain_resolver § "Leaf node — with EXTERNAL/ dependency, with filter"
-func TestLeafNode_WithEXTERNALDependency_WithFilter(t *testing.T) {
+// TestLeafNodeWithExternalDependencyWithFilter verifies that an
+// EXTERNAL/ dependency with a filter includes only matching files
+// plus _external.md.
+func TestLeafNodeWithExternalDependencyWithFilter(t *testing.T) {
 	dir := t.TempDir()
-	setupProjectRoot(t, dir)
+	chdirTemp(t, dir)
 
-	dependsOn := "depends_on:\n  - path: EXTERNAL/api\n    version: 1\n    filter:\n      - \"endpoints/*.md\"\n"
-	writeFile(t, "code-from-spec/spec/_node.md", nodeFile(1, ""))
-	writeFile(t, "code-from-spec/spec/a/_node.md", nodeFile(1, "parent_version: 1\n"+dependsOn))
+	// Create spec tree: ROOT, ROOT/a (depends on EXTERNAL/api with filter)
+	createFile(t, dir, "code-from-spec/spec/_node.md",
+		nodeFrontmatter(1, 0, ""))
+	createFile(t, dir, "code-from-spec/spec/a/_node.md",
+		nodeFrontmatter(1, 1, "depends_on:\n  - path: EXTERNAL/api\n    version: 1\n    filter:\n      - \"endpoints/*.md\"\n"))
 
-	// Create EXTERNAL/api with various files
-	writeFile(t, "code-from-spec/external/api/_external.md", "---\nversion: 1\n---\n# EXTERNAL/api\n")
-	writeFile(t, "code-from-spec/external/api/endpoints/create.md", "# create\n")
-	writeFile(t, "code-from-spec/external/api/endpoints/delete.md", "# delete\n")
-	writeFile(t, "code-from-spec/external/api/types.md", "# types\n")
+	// Create external dependency: api with _external.md, endpoints/create.md,
+	// endpoints/delete.md, types.md
+	createFile(t, dir, "code-from-spec/external/api/_external.md",
+		"---\nversion: 1\n---\n# EXTERNAL/api\n")
+	createFile(t, dir, "code-from-spec/external/api/endpoints/create.md", "create")
+	createFile(t, dir, "code-from-spec/external/api/endpoints/delete.md", "delete")
+	createFile(t, dir, "code-from-spec/external/api/types.md", "types")
 
-	chain, err := chainresolver.ResolveChain("ROOT/a")
+	chain, err := ResolveChain("ROOT/a")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	logicalNamesMatch(t, "Dependencies", chain.Dependencies, []string{"EXTERNAL/api"})
-
+	if len(chain.Dependencies) != 1 {
+		t.Fatalf("expected 1 dependency, got %d", len(chain.Dependencies))
+	}
 	dep := chain.Dependencies[0]
-	// Spec ref: § "with filter" — _external.md, endpoints/create.md, endpoints/delete.md (sorted). types.md excluded.
-	filePathsMatch(t, "EXTERNAL/api", dep, []string{
+	if dep.LogicalName != "EXTERNAL/api" {
+		t.Errorf("dep = %q, want EXTERNAL/api", dep.LogicalName)
+	}
+	// _external.md always included; endpoints/create.md and endpoints/delete.md
+	// match the filter; types.md does not match.
+	expectedPaths := []string{
 		"code-from-spec/external/api/_external.md",
 		"code-from-spec/external/api/endpoints/create.md",
 		"code-from-spec/external/api/endpoints/delete.md",
-	})
+	}
+	if len(dep.FilePaths) != len(expectedPaths) {
+		t.Fatalf("expected %d file paths, got %d: %v", len(expectedPaths), len(dep.FilePaths), dep.FilePaths)
+	}
+	for i, want := range expectedPaths {
+		if dep.FilePaths[i] != want {
+			t.Errorf("file path[%d] = %q, want %q", i, dep.FilePaths[i], want)
+		}
+	}
 }
 
-// TestTestNode_IncludesParentLeafDependencies verifies that a TEST/ node merges
-// its own depends_on with the parent leaf node's depends_on.
-// Spec ref: TEST/tech_design/internal/chain_resolver § "Test node — includes parent leaf's dependencies"
-func TestTestNode_IncludesParentLeafDependencies(t *testing.T) {
+// TestTestNodeIncludesParentLeafDependencies verifies that a TEST/
+// node includes its parent leaf's dependencies plus its own.
+func TestTestNodeIncludesParentLeafDependencies(t *testing.T) {
 	dir := t.TempDir()
-	setupProjectRoot(t, dir)
+	chdirTemp(t, dir)
 
-	// ROOT/a depends_on EXTERNAL/db; TEST/a depends_on EXTERNAL/fixtures
-	leafDependsOn := "depends_on:\n  - path: EXTERNAL/db\n    version: 1\n"
-	testDependsOn := "depends_on:\n  - path: EXTERNAL/fixtures\n    version: 1\n"
+	// Create spec tree: ROOT, ROOT/a (depends on EXTERNAL/db)
+	createFile(t, dir, "code-from-spec/spec/_node.md",
+		nodeFrontmatter(1, 0, ""))
+	createFile(t, dir, "code-from-spec/spec/a/_node.md",
+		nodeFrontmatter(1, 1, "depends_on:\n  - path: EXTERNAL/db\n    version: 1\n"))
 
-	writeFile(t, "code-from-spec/spec/_node.md", nodeFile(1, ""))
-	writeFile(t, "code-from-spec/spec/a/_node.md", nodeFile(1, "parent_version: 1\n"+leafDependsOn))
-	writeFile(t, "code-from-spec/spec/a/default.test.md", testNodeFile(1, testDependsOn))
+	// Create test node TEST/a with depends_on EXTERNAL/fixtures
+	createFile(t, dir, "code-from-spec/spec/a/default.test.md",
+		nodeFrontmatter(1, 1, "depends_on:\n  - path: EXTERNAL/fixtures\n    version: 1\n"))
 
-	writeFile(t, "code-from-spec/external/db/_external.md", "---\nversion: 1\n---\n# EXTERNAL/db\n")
-	writeFile(t, "code-from-spec/external/fixtures/_external.md", "---\nversion: 1\n---\n# EXTERNAL/fixtures\n")
+	// Create external dependencies
+	createFile(t, dir, "code-from-spec/external/db/_external.md",
+		"---\nversion: 1\n---\n# EXTERNAL/db\n")
+	createFile(t, dir, "code-from-spec/external/fixtures/_external.md",
+		"---\nversion: 1\n---\n# EXTERNAL/fixtures\n")
 
-	chain, err := chainresolver.ResolveChain("TEST/a")
+	chain, err := ResolveChain("TEST/a")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Spec ref: § "Test node" — Ancestors: ROOT, ROOT/a (parent leaf in ancestors)
-	logicalNamesMatch(t, "Ancestors", chain.Ancestors, []string{"ROOT", "ROOT/a"})
-	if chain.Target.LogicalName != "TEST/a" {
-		t.Errorf("Target.LogicalName: got %q, want %q", chain.Target.LogicalName, "TEST/a")
+	// Ancestors: ROOT, ROOT/a (parent leaf in ancestors)
+	if len(chain.Ancestors) != 2 {
+		t.Fatalf("expected 2 ancestors, got %d", len(chain.Ancestors))
 	}
+	if chain.Ancestors[0].LogicalName != "ROOT" {
+		t.Errorf("ancestors[0] = %q, want ROOT", chain.Ancestors[0].LogicalName)
+	}
+	if chain.Ancestors[1].LogicalName != "ROOT/a" {
+		t.Errorf("ancestors[1] = %q, want ROOT/a", chain.Ancestors[1].LogicalName)
+	}
+
+	// Target: TEST/a
+	if chain.Target.LogicalName != "TEST/a" {
+		t.Errorf("target = %q, want TEST/a", chain.Target.LogicalName)
+	}
+
 	// Dependencies: EXTERNAL/db and EXTERNAL/fixtures (sorted alphabetically)
-	logicalNamesMatch(t, "Dependencies", chain.Dependencies, []string{"EXTERNAL/db", "EXTERNAL/fixtures"})
+	if len(chain.Dependencies) != 2 {
+		t.Fatalf("expected 2 dependencies, got %d", len(chain.Dependencies))
+	}
+	if chain.Dependencies[0].LogicalName != "EXTERNAL/db" {
+		t.Errorf("dep[0] = %q, want EXTERNAL/db", chain.Dependencies[0].LogicalName)
+	}
+	if chain.Dependencies[1].LogicalName != "EXTERNAL/fixtures" {
+		t.Errorf("dep[1] = %q, want EXTERNAL/fixtures", chain.Dependencies[1].LogicalName)
+	}
 }
 
-// TestTestNode_NoOwnDependencies verifies that a TEST/ node with no own depends_on
-// still inherits the parent leaf's dependencies.
-// Spec ref: TEST/tech_design/internal/chain_resolver § "Test node — no own dependencies"
-func TestTestNode_NoOwnDependencies(t *testing.T) {
+// TestTestNodeNoOwnDependencies verifies that a TEST/ node with no
+// own depends_on still inherits the parent leaf's dependencies.
+func TestTestNodeNoOwnDependencies(t *testing.T) {
 	dir := t.TempDir()
-	setupProjectRoot(t, dir)
+	chdirTemp(t, dir)
 
-	leafDependsOn := "depends_on:\n  - path: ROOT/b\n    version: 1\n"
+	// Create spec tree: ROOT, ROOT/a (depends on ROOT/b), ROOT/b
+	createFile(t, dir, "code-from-spec/spec/_node.md",
+		nodeFrontmatter(1, 0, ""))
+	createFile(t, dir, "code-from-spec/spec/a/_node.md",
+		nodeFrontmatter(1, 1, "depends_on:\n  - path: ROOT/b\n    version: 1\n"))
+	createFile(t, dir, "code-from-spec/spec/b/_node.md",
+		nodeFrontmatter(1, 1, ""))
 
-	writeFile(t, "code-from-spec/spec/_node.md", nodeFile(1, ""))
-	writeFile(t, "code-from-spec/spec/a/_node.md", nodeFile(1, "parent_version: 1\n"+leafDependsOn))
-	writeFile(t, "code-from-spec/spec/b/_node.md", nodeFile(1, "parent_version: 1\n"))
-	writeFile(t, "code-from-spec/spec/a/default.test.md", testNodeFile(1, "")) // no own depends_on
+	// Create test node TEST/a with no depends_on
+	createFile(t, dir, "code-from-spec/spec/a/default.test.md",
+		nodeFrontmatter(1, 1, ""))
 
-	chain, err := chainresolver.ResolveChain("TEST/a")
+	chain, err := ResolveChain("TEST/a")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	logicalNamesMatch(t, "Ancestors", chain.Ancestors, []string{"ROOT", "ROOT/a"})
+	// Ancestors: ROOT, ROOT/a
+	if len(chain.Ancestors) != 2 {
+		t.Fatalf("expected 2 ancestors, got %d", len(chain.Ancestors))
+	}
+	if chain.Ancestors[0].LogicalName != "ROOT" {
+		t.Errorf("ancestors[0] = %q, want ROOT", chain.Ancestors[0].LogicalName)
+	}
+	if chain.Ancestors[1].LogicalName != "ROOT/a" {
+		t.Errorf("ancestors[1] = %q, want ROOT/a", chain.Ancestors[1].LogicalName)
+	}
+
+	// Target: TEST/a
 	if chain.Target.LogicalName != "TEST/a" {
-		t.Errorf("Target.LogicalName: got %q, want %q", chain.Target.LogicalName, "TEST/a")
+		t.Errorf("target = %q, want TEST/a", chain.Target.LogicalName)
 	}
-	// Spec ref: § "no own dependencies" — one item ROOT/b (from parent leaf)
-	logicalNamesMatch(t, "Dependencies", chain.Dependencies, []string{"ROOT/b"})
+
+	// Dependencies: ROOT/b (from parent leaf)
+	if len(chain.Dependencies) != 1 {
+		t.Fatalf("expected 1 dependency, got %d", len(chain.Dependencies))
+	}
+	if chain.Dependencies[0].LogicalName != "ROOT/b" {
+		t.Errorf("dep[0] = %q, want ROOT/b", chain.Dependencies[0].LogicalName)
+	}
 }
 
-// TestDependencies_SortedAlphabetically verifies that multiple dependencies are
-// returned sorted by logical name.
-// Spec ref: TEST/tech_design/internal/chain_resolver § "Dependencies sorted alphabetically"
-func TestDependencies_SortedAlphabetically(t *testing.T) {
+// TestDependenciesSortedAlphabetically verifies that dependencies
+// are returned in alphabetical order by logical name.
+func TestDependenciesSortedAlphabetically(t *testing.T) {
 	dir := t.TempDir()
-	setupProjectRoot(t, dir)
+	chdirTemp(t, dir)
 
-	dependsOn := "depends_on:\n  - path: ROOT/z\n    version: 1\n  - path: ROOT/m\n    version: 1\n  - path: ROOT/b\n    version: 1\n"
-	writeFile(t, "code-from-spec/spec/_node.md", nodeFile(1, ""))
-	writeFile(t, "code-from-spec/spec/a/_node.md", nodeFile(1, "parent_version: 1\n"+dependsOn))
-	writeFile(t, "code-from-spec/spec/z/_node.md", nodeFile(1, "parent_version: 1\n"))
-	writeFile(t, "code-from-spec/spec/m/_node.md", nodeFile(1, "parent_version: 1\n"))
-	writeFile(t, "code-from-spec/spec/b/_node.md", nodeFile(1, "parent_version: 1\n"))
+	// Create spec tree: ROOT, ROOT/a (depends on ROOT/z, ROOT/m, ROOT/b)
+	createFile(t, dir, "code-from-spec/spec/_node.md",
+		nodeFrontmatter(1, 0, ""))
+	createFile(t, dir, "code-from-spec/spec/a/_node.md",
+		nodeFrontmatter(1, 1, "depends_on:\n  - path: ROOT/z\n    version: 1\n  - path: ROOT/m\n    version: 1\n  - path: ROOT/b\n    version: 1\n"))
+	createFile(t, dir, "code-from-spec/spec/z/_node.md",
+		nodeFrontmatter(1, 1, ""))
+	createFile(t, dir, "code-from-spec/spec/m/_node.md",
+		nodeFrontmatter(1, 1, ""))
+	createFile(t, dir, "code-from-spec/spec/b/_node.md",
+		nodeFrontmatter(1, 1, ""))
 
-	chain, err := chainresolver.ResolveChain("ROOT/a")
+	chain, err := ResolveChain("ROOT/a")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Spec ref: § "Dependencies sorted alphabetically" — ROOT/b, ROOT/m, ROOT/z
-	logicalNamesMatch(t, "Dependencies", chain.Dependencies, []string{"ROOT/b", "ROOT/m", "ROOT/z"})
+	// Dependencies sorted: ROOT/b, ROOT/m, ROOT/z
+	if len(chain.Dependencies) != 3 {
+		t.Fatalf("expected 3 dependencies, got %d", len(chain.Dependencies))
+	}
+	expected := []string{"ROOT/b", "ROOT/m", "ROOT/z"}
+	for i, want := range expected {
+		if chain.Dependencies[i].LogicalName != want {
+			t.Errorf("dep[%d] = %q, want %q", i, chain.Dependencies[i].LogicalName, want)
+		}
+	}
 }
 
-// ---------------------------------------------------------------------------
-// Failure Case Tests
-// Spec ref: TEST/tech_design/internal/chain_resolver § "Failure Cases"
-// ---------------------------------------------------------------------------
+// --- Failure Cases ---
 
-// TestInvalidLogicalName verifies that an unrecognized prefix returns an error
-// containing "cannot resolve logical name".
-// Spec ref: TEST/tech_design/internal/chain_resolver § "Invalid logical name"
+// TestInvalidLogicalName verifies that an unrecognized logical name
+// prefix produces an error.
 func TestInvalidLogicalName(t *testing.T) {
 	dir := t.TempDir()
-	setupProjectRoot(t, dir)
+	chdirTemp(t, dir)
 
-	_, err := chainresolver.ResolveChain("INVALID/something")
+	_, err := ResolveChain("INVALID/something")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !contains(err.Error(), "cannot resolve logical name") {
-		t.Errorf("error %q does not contain %q", err.Error(), "cannot resolve logical name")
+	if !strings.Contains(err.Error(), "cannot resolve logical name") {
+		t.Errorf("error = %q, want it to contain 'cannot resolve logical name'", err.Error())
 	}
 }
 
-// TestUnreadableFrontmatter verifies that invalid YAML frontmatter produces
-// an error from ParseFrontmatter.
-// Spec ref: TEST/tech_design/internal/chain_resolver § "Unreadable frontmatter"
+// TestUnreadableFrontmatter verifies that invalid YAML in a node's
+// frontmatter produces an error.
 func TestUnreadableFrontmatter(t *testing.T) {
 	dir := t.TempDir()
-	setupProjectRoot(t, dir)
+	chdirTemp(t, dir)
 
-	writeFile(t, "code-from-spec/spec/_node.md", nodeFile(1, ""))
-	// Write invalid YAML in ROOT/a's frontmatter
-	writeFile(t, "code-from-spec/spec/a/_node.md", "---\nversion: [\ninvalid yaml here\n---\n")
+	// Create spec tree: ROOT, ROOT/a (leaf with invalid frontmatter)
+	createFile(t, dir, "code-from-spec/spec/_node.md",
+		nodeFrontmatter(1, 0, ""))
+	// Write invalid YAML frontmatter for ROOT/a
+	createFile(t, dir, "code-from-spec/spec/a/_node.md",
+		"---\n: invalid: yaml: [broken\n---\n")
 
-	_, err := chainresolver.ResolveChain("ROOT/a")
+	_, err := ResolveChain("ROOT/a")
 	if err == nil {
-		t.Fatal("expected error, got nil")
+		t.Fatal("expected error from ParseFrontmatter, got nil")
 	}
-	// Expect error from ParseFrontmatter — any non-nil error is acceptable here
 }
 
-// TestUnresolvableDependency verifies that a depends_on referencing a non-existent
-// ROOT/ node returns an error containing "cannot resolve logical name".
-// Spec ref: TEST/tech_design/internal/chain_resolver § "Unresolvable dependency"
+// TestUnresolvableDependency verifies that a dependency pointing to
+// a nonexistent node produces an error.
 func TestUnresolvableDependency(t *testing.T) {
 	dir := t.TempDir()
-	setupProjectRoot(t, dir)
+	chdirTemp(t, dir)
 
-	dependsOn := "depends_on:\n  - path: ROOT/nonexistent\n    version: 1\n"
-	writeFile(t, "code-from-spec/spec/_node.md", nodeFile(1, ""))
-	writeFile(t, "code-from-spec/spec/a/_node.md", nodeFile(1, "parent_version: 1\n"+dependsOn))
-	// NOTE: ROOT/nonexistent/_node.md is intentionally NOT created
+	// Create spec tree: ROOT, ROOT/a (depends on ROOT/nonexistent)
+	createFile(t, dir, "code-from-spec/spec/_node.md",
+		nodeFrontmatter(1, 0, ""))
+	createFile(t, dir, "code-from-spec/spec/a/_node.md",
+		nodeFrontmatter(1, 1, "depends_on:\n  - path: ROOT/nonexistent\n    version: 1\n"))
 
-	_, err := chainresolver.ResolveChain("ROOT/a")
+	_, err := ResolveChain("ROOT/a")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !contains(err.Error(), "cannot resolve logical name") {
-		t.Errorf("error %q does not contain %q", err.Error(), "cannot resolve logical name")
+	if !strings.Contains(err.Error(), "cannot resolve logical name") {
+		t.Errorf("error = %q, want it to contain 'cannot resolve logical name'", err.Error())
 	}
 }
 
-// TestInvalidGlobPatternInFilter verifies that an invalid glob pattern in a filter
-// returns an error containing "error evaluating filter".
-// Spec ref: TEST/tech_design/internal/chain_resolver § "Invalid glob pattern in filter"
+// TestInvalidGlobPatternInFilter verifies that a malformed glob
+// pattern in a filter produces an error.
 func TestInvalidGlobPatternInFilter(t *testing.T) {
 	dir := t.TempDir()
-	setupProjectRoot(t, dir)
+	chdirTemp(t, dir)
 
-	dependsOn := "depends_on:\n  - path: EXTERNAL/api\n    version: 1\n    filter:\n      - \"[invalid\"\n"
-	writeFile(t, "code-from-spec/spec/_node.md", nodeFile(1, ""))
-	writeFile(t, "code-from-spec/spec/a/_node.md", nodeFile(1, "parent_version: 1\n"+dependsOn))
-	writeFile(t, "code-from-spec/external/api/_external.md", "---\nversion: 1\n---\n# EXTERNAL/api\n")
+	// Create spec tree: ROOT, ROOT/a (depends on EXTERNAL/api with bad filter)
+	createFile(t, dir, "code-from-spec/spec/_node.md",
+		nodeFrontmatter(1, 0, ""))
+	createFile(t, dir, "code-from-spec/spec/a/_node.md",
+		nodeFrontmatter(1, 1, "depends_on:\n  - path: EXTERNAL/api\n    version: 1\n    filter:\n      - \"[invalid\"\n"))
 
-	_, err := chainresolver.ResolveChain("ROOT/a")
+	// Create external dependency
+	createFile(t, dir, "code-from-spec/external/api/_external.md",
+		"---\nversion: 1\n---\n# EXTERNAL/api\n")
+	createFile(t, dir, "code-from-spec/external/api/data.txt", "data")
+
+	_, err := ResolveChain("ROOT/a")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !contains(err.Error(), "error evaluating filter") {
-		t.Errorf("error %q does not contain %q", err.Error(), "error evaluating filter")
+	if !strings.Contains(err.Error(), "error evaluating filter") {
+		t.Errorf("error = %q, want it to contain 'error evaluating filter'", err.Error())
 	}
-}
-
-// contains is a simple helper to check substring presence.
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		func() bool {
-			for i := 0; i <= len(s)-len(substr); i++ {
-				if s[i:i+len(substr)] == substr {
-					return true
-				}
-			}
-			return false
-		}())
 }

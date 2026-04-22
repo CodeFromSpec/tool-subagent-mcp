@@ -1,5 +1,5 @@
 ---
-version: 29
+version: 30
 parent_version: 3
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
@@ -64,7 +64,7 @@ type WriteFileArgs struct {
 ### Handler
 
 ```go
-func handleWriteFile(
+func HandleWriteFile(
     ctx context.Context,
     req *mcp.CallToolRequest,
     args WriteFileArgs,
