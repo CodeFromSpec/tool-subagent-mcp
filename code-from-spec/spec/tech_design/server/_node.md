@@ -1,5 +1,5 @@
 ---
-version: 34
+version: 35
 parent_version: 14
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
@@ -7,7 +7,7 @@ depends_on:
   - path: ROOT/tech_design/internal/tools
     version: 3
   - path: ROOT/tech_design/internal/tools/load_chain
-    version: 34
+    version: 39
   - path: ROOT/tech_design/internal/tools/write_file
     version: 30
 implements:

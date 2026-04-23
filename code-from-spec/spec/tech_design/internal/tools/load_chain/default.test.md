@@ -1,6 +1,6 @@
 ---
-version: 5
-parent_version: 34
+version: 6
+parent_version: 39
 implements:
   - internal/load_chain/load_chain_test.go
 ---
@@ -60,6 +60,30 @@ same `LogicalName`.
 Expect: both calls return success with non-empty chain
 content. Content may differ between calls because a new
 UUID is generated each time.
+
+### Frontmatter stripped from non-target files
+
+Create a spec tree: `ROOT` (with frontmatter containing
+`version: 1`) and `ROOT/a` (leaf with `implements` and
+frontmatter containing `version: 2`). Call `handleLoadChain`
+with `LogicalName: "ROOT/a"`.
+
+Expect: success result. The file section for `ROOT` does not
+contain the YAML frontmatter delimiters (`---`) or `version`.
+The file section for `ROOT/a` (the target) preserves the
+full frontmatter.
+
+### Frontmatter stripped from dependency files
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with `depends_on`
+referencing `EXTERNAL/db`). Create the external dependency
+with `_external.md` (containing frontmatter with `version: 1`)
+and a data file. Call `handleLoadChain` with
+`LogicalName: "ROOT/a"`.
+
+Expect: success result. The file section for
+`_external.md` does not contain the YAML frontmatter. The
+target node's frontmatter is preserved.
 
 ## Failure Cases
 

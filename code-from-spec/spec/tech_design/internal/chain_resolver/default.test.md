@@ -1,6 +1,6 @@
 ---
-version: 12
-parent_version: 53
+version: 13
+parent_version: 55
 implements:
   - internal/chainresolver/chainresolver_test.go
 ---
@@ -103,6 +103,48 @@ Input: `"ROOT/a"`
 
 Expect:
 - `Dependencies` sorted: `ROOT/b`, `ROOT/m`, `ROOT/z`
+
+## Edge Cases
+
+### Test node — shared EXTERNAL/ dependency is deduplicated
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
+`EXTERNAL/db`). Create test node `TEST/a` with depends_on
+`EXTERNAL/db`. Create external dependency `db` with
+`_external.md` and `schema.sql`.
+
+Input: `"TEST/a"`
+
+Expect:
+- `Dependencies`: one item `EXTERNAL/db` (not two), with
+  `FilePaths` containing `_external.md` and `schema.sql`
+
+### Duplicate ROOT/ dependency is deduplicated
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
+`ROOT/b` listed twice), `ROOT/b`.
+
+Input: `"ROOT/a"`
+
+Expect:
+- `Dependencies`: one item `ROOT/b` (not two)
+
+### EXTERNAL/ with overlapping filters — files deduplicated
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
+`EXTERNAL/api`). Create test node `TEST/a` with depends_on
+`EXTERNAL/api` with filter `["docs/*"]`. Create external
+dependency `api` with `_external.md`, `docs/ref.md`,
+`types.md`.
+
+Input: `"TEST/a"`
+
+Expect:
+- `Dependencies`: one item `EXTERNAL/api`. `FilePaths`
+  contains `_external.md`, `docs/ref.md`, `types.md` — each
+  appearing only once. The leaf's unfiltered reference imports
+  the full folder; the test node's filtered reference does not
+  add duplicates.
 
 ## Failure Cases
 
