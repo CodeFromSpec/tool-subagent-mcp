@@ -1,5 +1,5 @@
 ---
-version: 38
+version: 39
 parent_version: 3
 depends_on:
   - path: EXTERNAL/google-uuid
@@ -123,9 +123,11 @@ path: code-from-spec/external/database/schema.sql
       directory. If any fails, return a tool error.
 5. Generate a UUID using `github.com/google/uuid`.
 6. Call `ResolveChain` to resolve the full chain and read every
-   file in the chain into memory. Build the concatenated chain
-   content using the UUID and the chain output format. If any
-   step fails, return a tool error.
+   file in the chain into memory. For every file except the
+   target node, strip the YAML frontmatter before including the
+   content. Build the concatenated chain content using the UUID
+   and the chain output format. If any step fails, return a tool
+   error.
 7. Return the chain content as a success result.
 
 ## Constraints
