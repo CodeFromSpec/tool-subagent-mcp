@@ -1,5 +1,5 @@
 ---
-version: 53
+version: 55
 parent_version: 11
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -91,6 +91,13 @@ For each entry in `DependsOn` whose `LogicalName` starts with
    `Dependencies`.
 
 Sort `Dependencies` by logical name alphabetically.
+
+**Step 3 — Deduplicate file paths**
+
+Review the `Ancestors` and `Dependencies` lists and remove
+duplicate file paths. Each file path must appear only once
+across the chain. When a path appears more than once, keep the
+first occurrence and discard subsequent ones.
 
 ### Error handling
 
