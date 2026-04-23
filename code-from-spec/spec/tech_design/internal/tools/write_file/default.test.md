@@ -1,6 +1,6 @@
 ---
-version: 3
-parent_version: 30
+version: 4
+parent_version: 33
 implements:
   - internal/write_file/write_file_test.go
 ---
@@ -41,6 +41,17 @@ Create a spec tree with `ROOT/a` having
 that path. Call the handler with new content.
 
 Expect: success. File content replaced.
+
+### Path with backslashes is normalized
+
+Create a spec tree with `ROOT/a` having
+`implements: ["output/file.go"]`. Call the handler with
+`LogicalName: "ROOT/a"`, `Path: "output\\file.go"`, and
+`Content: "package main"`.
+
+Expect: success result with text `"wrote output/file.go"`.
+The backslash path matches the forward-slash implements
+entry after normalization.
 
 ## Failure Cases
 

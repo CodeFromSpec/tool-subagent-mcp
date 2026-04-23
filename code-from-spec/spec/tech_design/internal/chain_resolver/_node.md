@@ -1,5 +1,5 @@
 ---
-version: 62
+version: 65
 parent_version: 11
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -7,7 +7,7 @@ depends_on:
   - path: ROOT/tech_design/internal/frontmatter
     version: 27
   - path: ROOT/tech_design/internal/logical_names
-    version: 24
+    version: 26
 implements:
   - internal/chainresolver/chainresolver.go
 ---
@@ -84,11 +84,14 @@ For each entry in `DependsOn` whose `LogicalName` starts with
 For each entry in `DependsOn` whose `LogicalName` starts with
 `EXTERNAL/`:
 1. Call `PathFromLogicalName` to get the `_external.md` path.
-2. If the entry has a non-empty `Filter`, include `_external.md`
-   plus files in the dependency folder and any subfolders matching
-   any pattern. If no `Filter` is present, include all files in
-   the dependency folder and any subfolders. File paths are sorted
-   and relative to project root.
+2. Walk the dependency folder recursively using
+   `filepath.WalkDir`. Skip directories — only collect files.
+   If the entry has a non-empty `Filter`, include `_external.md`
+   plus files whose path relative to the dependency folder
+   matches any pattern using `path.Match` (from the `path`
+   package, not `filepath`). If no `Filter`
+   is present, include all files. File paths are sorted and
+   relative to project root.
 3. If a `ChainItem` with the same logical name already exists
    in `Dependencies`, merge the collected file paths into the
    existing item. Otherwise, add a new `ChainItem` with the
