@@ -1,6 +1,6 @@
 ---
-version: 15
-parent_version: 62
+version: 17
+parent_version: 65
 implements:
   - internal/chainresolver/chainresolver_test.go
 ---
@@ -136,6 +136,23 @@ Input: `"ROOT/a"`
 
 Expect:
 - `Code`: `["src/a.go"]`
+
+### EXTERNAL/ with filter — subdirectories are excluded
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
+`EXTERNAL/api` with filter `["endpoints/*"]`). Create
+external dependency `api` with `_external.md`,
+`endpoints/create.md`, and a subdirectory
+`endpoints/drafts/` containing `endpoints/drafts/notes.md`.
+
+Input: `"ROOT/a"`
+
+Expect:
+- `Dependencies`: one item `EXTERNAL/api` with `FilePaths`
+  containing `_external.md` and `endpoints/create.md` only.
+  The subdirectory `endpoints/drafts/` must not appear in
+  `FilePaths`. The file `endpoints/drafts/notes.md` does not
+  match the filter and must not appear.
 
 ## Edge Cases
 
