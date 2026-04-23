@@ -1,5 +1,5 @@
 ---
-version: 34
+version: 49
 parent_version: 3
 depends_on:
   - path: EXTERNAL/google-uuid
@@ -7,11 +7,11 @@ depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 1
   - path: ROOT/tech_design/internal/chain_resolver
-    version: 53
+    version: 65
   - path: ROOT/tech_design/internal/frontmatter
     version: 27
   - path: ROOT/tech_design/internal/logical_names
-    version: 24
+    version: 26
   - path: ROOT/tech_design/internal/pathvalidation
     version: 10
 implements:
@@ -80,8 +80,10 @@ Opening delimiter: `<<<FILE_<uuid>>>`
 Closing delimiter: `<<<END_FILE_<uuid>>>`
 
 The same UUID is used for all files in the chain. Each section
-includes `node:` and `path:` headers between the opening
-delimiter and the file content, separated by a blank line.
+includes `path:` and optionally `node:` headers between the
+opening delimiter and the file content, separated by a blank
+line. Spec and dependency files include both `node:` and
+`path:`; code files include only `path:`.
 
 ```
 <<<FILE_550e8400-e29b-41d4-a716-446655440000>>>
@@ -104,6 +106,12 @@ path: code-from-spec/external/database/schema.sql
 
 <content of schema.sql>
 <<<END_FILE_550e8400-e29b-41d4-a716-446655440000>>>
+
+<<<FILE_550e8400-e29b-41d4-a716-446655440000>>>
+path: internal/payments/fees/calculation.go
+
+<existing source file content>
+<<<END_FILE_550e8400-e29b-41d4-a716-446655440000>>>
 ```
 
 ### Algorithm
@@ -121,12 +129,14 @@ path: code-from-spec/external/database/schema.sql
       implements"`.
    b. Call `ValidatePath` for each path against the working
       directory. If any fails, return a tool error.
-5. Generate a UUID using `github.com/google/uuid`. Call
-   `ResolveChain` to resolve the full chain and read every file
-   in the chain into memory. Build the concatenated chain content
-   using the UUID and the chain output format. If any step fails,
-   return a tool error.
-6. Return the chain content as a success result.
+5. Generate a UUID using `github.com/google/uuid`.
+6. Call `ResolveChain` to resolve the full chain and read every
+   file in the chain into memory. For ancestors and dependencies only, strip the YAML frontmatter
+   before including the content. Build
+   the concatenated chain content using the UUID and the chain
+   output format, appending the code files after the
+   dependencies. If any step fails, return a tool error.
+7. Return the chain content as a success result.
 
 ## Constraints
 

@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/tools/load_chain@v5
+// spec: TEST/tech_design/internal/tools/load_chain@v10
 package load_chain
 
 import (
@@ -11,21 +11,22 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// helper: creates a spec file at the given path relative to dir,
-// writing the provided content. Creates parent directories as needed.
-func createFile(t *testing.T, dir, relPath, content string) {
+// helper: creates a directory and writes a file with the given content.
+// Fails the test if any operation fails.
+func writeFile(t *testing.T, base string, relPath string, content string) {
 	t.Helper()
-	full := filepath.Join(dir, filepath.FromSlash(relPath))
+	full := filepath.Join(base, filepath.FromSlash(relPath))
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-		t.Fatalf("creating dirs for %s: %v", relPath, err)
+		t.Fatalf("mkdir %s: %v", filepath.Dir(full), err)
 	}
 	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-		t.Fatalf("writing %s: %v", relPath, err)
+		t.Fatalf("write %s: %v", full, err)
 	}
 }
 
-// helper: calls HandleLoadChain with the given logical name.
-func callLoadChain(t *testing.T, logicalName string) *mcp.CallToolResult {
+// helper: calls HandleLoadChain with the given logical name and returns
+// the result. Does not fail the test — the caller inspects the result.
+func callHandler(t *testing.T, logicalName string) *mcp.CallToolResult {
 	t.Helper()
 	result, _, err := HandleLoadChain(
 		context.Background(),
@@ -46,55 +47,56 @@ func resultText(t *testing.T, result *mcp.CallToolResult) string {
 	}
 	tc, ok := result.Content[0].(*mcp.TextContent)
 	if !ok {
-		t.Fatalf("result content is not TextContent: %T", result.Content[0])
+		t.Fatal("result content is not TextContent")
 	}
 	return tc.Text
 }
 
-// helper: changes the working directory to dir for the duration of the test.
+// helper: changes the working directory to dir for the duration of the
+// test and restores it when the test completes.
 func chdir(t *testing.T, dir string) {
 	t.Helper()
 	orig, err := os.Getwd()
 	if err != nil {
-		t.Fatalf("getting cwd: %v", err)
+		t.Fatalf("getwd: %v", err)
 	}
 	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir to %s: %v", dir, err)
+		t.Fatalf("chdir %s: %v", dir, err)
 	}
 	t.Cleanup(func() {
 		_ = os.Chdir(orig)
 	})
 }
 
-// rootNode returns minimal frontmatter for a ROOT node (no implements, no deps).
-func rootNode() string {
-	return "---\nversion: 1\n---\n# ROOT\n"
-}
+// --- Happy Path Tests ---
 
-// leafNode returns frontmatter for a leaf node with implements.
-func leafNode() string {
-	return "---\nversion: 1\nimplements:\n  - internal/foo/foo.go\n---\n# Leaf\n"
-}
-
-// leafNodeNoDeps returns frontmatter for a leaf node without implements.
-func leafNodeNoImplements() string {
-	return "---\nversion: 1\n---\n# Leaf without implements\n"
-}
-
-// --- Happy Path ---
-
-// TestValidRootLeafNode tests that a valid ROOT/ leaf node returns
-// a success result containing chain content from ROOT and ROOT/a.
-func TestValidRootLeafNode(t *testing.T) {
-	dir := t.TempDir()
-	chdir(t, dir)
+// TestValidROOTLeafNode verifies that a valid ROOT/ leaf node
+// returns a success result containing chain content from ROOT and ROOT/a.
+func TestValidROOTLeafNode(t *testing.T) {
+	tmp := t.TempDir()
 
 	// Create ROOT node
-	createFile(t, dir, "code-from-spec/spec/_node.md", rootNode())
-	// Create ROOT/a leaf node with implements
-	createFile(t, dir, "code-from-spec/spec/a/_node.md", leafNode())
+	writeFile(t, tmp, "code-from-spec/spec/_node.md", `---
+version: 1
+---
 
-	result := callLoadChain(t, "ROOT/a")
+# ROOT
+`)
+
+	// Create ROOT/a leaf node with implements
+	writeFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
+version: 1
+parent_version: 1
+implements:
+  - src/a.go
+---
+
+# ROOT/a
+`)
+
+	chdir(t, tmp)
+
+	result := callHandler(t, "ROOT/a")
 
 	if result.IsError {
 		t.Fatalf("expected success, got error: %s", resultText(t, result))
@@ -102,55 +104,98 @@ func TestValidRootLeafNode(t *testing.T) {
 
 	text := resultText(t, result)
 
-	// Chain should contain both ROOT and ROOT/a
-	if !strings.Contains(text, "node: ROOT\n") {
-		t.Error("chain content missing ROOT node")
+	// Chain should contain files from ROOT and ROOT/a
+	if !strings.Contains(text, "# ROOT") {
+		t.Error("chain content missing ROOT node content")
 	}
-	if !strings.Contains(text, "node: ROOT/a\n") {
-		t.Error("chain content missing ROOT/a node")
+	if !strings.Contains(text, "# ROOT/a") {
+		t.Error("chain content missing ROOT/a node content")
 	}
 }
 
-// TestValidTestNode tests that a valid TEST/ node returns a success result.
-func TestValidTestNode(t *testing.T) {
-	dir := t.TempDir()
-	chdir(t, dir)
+// TestValidTESTNode verifies that a valid TEST/ node returns a
+// success result.
+func TestValidTESTNode(t *testing.T) {
+	tmp := t.TempDir()
 
 	// Create ROOT node
-	createFile(t, dir, "code-from-spec/spec/_node.md", rootNode())
-	// Create ROOT/a leaf node with implements
-	createFile(t, dir, "code-from-spec/spec/a/_node.md", leafNode())
-	// Create TEST/a node with implements
-	createFile(t, dir, "code-from-spec/spec/a/default.test.md",
-		"---\nversion: 1\nimplements:\n  - internal/foo/foo_test.go\n---\n# Test\n")
+	writeFile(t, tmp, "code-from-spec/spec/_node.md", `---
+version: 1
+---
 
-	result := callLoadChain(t, "TEST/a")
+# ROOT
+`)
+
+	// Create ROOT/a leaf node
+	writeFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
+version: 1
+parent_version: 1
+implements:
+  - src/a.go
+---
+
+# ROOT/a
+`)
+
+	// Create TEST/a node
+	writeFile(t, tmp, "code-from-spec/spec/a/default.test.md", `---
+version: 1
+parent_version: 1
+implements:
+  - src/a_test.go
+---
+
+# TEST/a
+`)
+
+	chdir(t, tmp)
+
+	result := callHandler(t, "TEST/a")
 
 	if result.IsError {
 		t.Fatalf("expected success, got error: %s", resultText(t, result))
 	}
 }
 
-// TestNodeWithDependencies tests that a node with external dependencies
-// returns chain content including the dependency files.
+// TestNodeWithDependencies verifies that the chain includes
+// external dependency files.
 func TestNodeWithDependencies(t *testing.T) {
-	dir := t.TempDir()
-	chdir(t, dir)
+	tmp := t.TempDir()
 
 	// Create ROOT node
-	createFile(t, dir, "code-from-spec/spec/_node.md", rootNode())
+	writeFile(t, tmp, "code-from-spec/spec/_node.md", `---
+version: 1
+---
 
-	// Create ROOT/a leaf with depends_on referencing EXTERNAL/db
-	createFile(t, dir, "code-from-spec/spec/a/_node.md",
-		"---\nversion: 1\nimplements:\n  - internal/foo/foo.go\ndepends_on:\n  - path: EXTERNAL/db\n---\n# Leaf with dep\n")
+# ROOT
+`)
 
-	// Create EXTERNAL/db with _external.md and a data file
-	createFile(t, dir, "code-from-spec/external/db/_external.md",
-		"---\nversion: 1\n---\n# EXTERNAL/db\n")
-	createFile(t, dir, "code-from-spec/external/db/schema.sql",
-		"CREATE TABLE foo (id INT);")
+	// Create ROOT/a with a dependency on EXTERNAL/db
+	writeFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
+version: 1
+parent_version: 1
+depends_on:
+  - path: EXTERNAL/db
+    version: 1
+implements:
+  - src/a.go
+---
 
-	result := callLoadChain(t, "ROOT/a")
+# ROOT/a
+`)
+
+	// Create the external dependency _external.md and a data file
+	writeFile(t, tmp, "code-from-spec/external/db/_external.md", `---
+version: 1
+---
+
+# EXTERNAL/db
+`)
+	writeFile(t, tmp, "code-from-spec/external/db/schema.sql", `CREATE TABLE t (id INT);`)
+
+	chdir(t, tmp)
+
+	result := callHandler(t, "ROOT/a")
 
 	if result.IsError {
 		t.Fatalf("expected success, got error: %s", resultText(t, result))
@@ -158,26 +203,41 @@ func TestNodeWithDependencies(t *testing.T) {
 
 	text := resultText(t, result)
 
-	// Chain should contain the external dependency files
-	if !strings.Contains(text, "node: EXTERNAL/db") {
-		t.Error("chain content missing EXTERNAL/db node")
+	// Should contain external dependency files
+	if !strings.Contains(text, "EXTERNAL/db") {
+		t.Error("chain content missing EXTERNAL/db dependency")
 	}
-	if !strings.Contains(text, "schema.sql") {
-		t.Error("chain content missing schema.sql data file path")
+	if !strings.Contains(text, "CREATE TABLE") {
+		t.Error("chain content missing schema.sql content")
 	}
 }
 
 // TestChainContentUsesHeredocFormat verifies the output uses
-// <<<FILE_<uuid>>> and <<<END_FILE_<uuid>>> delimiters with
+// the <<<FILE_>>> and <<<END_FILE_>>> delimiter format with
 // node: and path: headers.
 func TestChainContentUsesHeredocFormat(t *testing.T) {
-	dir := t.TempDir()
-	chdir(t, dir)
+	tmp := t.TempDir()
 
-	createFile(t, dir, "code-from-spec/spec/_node.md", rootNode())
-	createFile(t, dir, "code-from-spec/spec/a/_node.md", leafNode())
+	writeFile(t, tmp, "code-from-spec/spec/_node.md", `---
+version: 1
+---
 
-	result := callLoadChain(t, "ROOT/a")
+# ROOT
+`)
+
+	writeFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
+version: 1
+parent_version: 1
+implements:
+  - src/a.go
+---
+
+# ROOT/a
+`)
+
+	chdir(t, tmp)
+
+	result := callHandler(t, "ROOT/a")
 
 	if result.IsError {
 		t.Fatalf("expected success, got error: %s", resultText(t, result))
@@ -199,17 +259,32 @@ func TestChainContentUsesHeredocFormat(t *testing.T) {
 	}
 }
 
-// TestRepeatedCallsSucceed verifies that calling HandleLoadChain
-// twice with the same logical name both succeed. UUIDs may differ.
+// TestRepeatedCallsSucceed verifies that calling the handler
+// twice with the same input both succeed. UUIDs may differ.
 func TestRepeatedCallsSucceed(t *testing.T) {
-	dir := t.TempDir()
-	chdir(t, dir)
+	tmp := t.TempDir()
 
-	createFile(t, dir, "code-from-spec/spec/_node.md", rootNode())
-	createFile(t, dir, "code-from-spec/spec/a/_node.md", leafNode())
+	writeFile(t, tmp, "code-from-spec/spec/_node.md", `---
+version: 1
+---
 
-	result1 := callLoadChain(t, "ROOT/a")
-	result2 := callLoadChain(t, "ROOT/a")
+# ROOT
+`)
+
+	writeFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
+version: 1
+parent_version: 1
+implements:
+  - src/a.go
+---
+
+# ROOT/a
+`)
+
+	chdir(t, tmp)
+
+	result1 := callHandler(t, "ROOT/a")
+	result2 := callHandler(t, "ROOT/a")
 
 	if result1.IsError {
 		t.Fatalf("first call failed: %s", resultText(t, result1))
@@ -221,23 +296,325 @@ func TestRepeatedCallsSucceed(t *testing.T) {
 	text1 := resultText(t, result1)
 	text2 := resultText(t, result2)
 
-	if len(text1) == 0 {
+	if text1 == "" {
 		t.Error("first call returned empty content")
 	}
-	if len(text2) == 0 {
+	if text2 == "" {
 		t.Error("second call returned empty content")
+	}
+}
+
+// TestFrontmatterStrippedFromNonTargetFiles verifies that ancestor
+// files have their YAML frontmatter stripped, while the target
+// preserves its frontmatter.
+func TestFrontmatterStrippedFromNonTargetFiles(t *testing.T) {
+	tmp := t.TempDir()
+
+	writeFile(t, tmp, "code-from-spec/spec/_node.md", `---
+version: 1
+---
+
+# ROOT
+`)
+
+	writeFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
+version: 2
+parent_version: 1
+implements:
+  - src/a.go
+---
+
+# ROOT/a
+`)
+
+	chdir(t, tmp)
+
+	result := callHandler(t, "ROOT/a")
+
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", resultText(t, result))
+	}
+
+	text := resultText(t, result)
+
+	// Split the output into file sections to examine individually.
+	// Find the ROOT ancestor section — it should NOT contain frontmatter.
+	// Find the ROOT/a target section — it SHOULD contain frontmatter.
+	sections := strings.Split(text, "<<<FILE_")
+
+	foundRootAncestor := false
+	foundTarget := false
+
+	for _, section := range sections {
+		if section == "" {
+			continue
+		}
+		if strings.Contains(section, "node: ROOT\n") {
+			foundRootAncestor = true
+			// The ROOT ancestor section should not contain frontmatter
+			// delimiters (---) or "version"
+			// Extract content after the blank line separator
+			parts := strings.SplitN(section, "\n\n", 2)
+			if len(parts) < 2 {
+				t.Fatal("ROOT section missing content separator")
+			}
+			content := parts[1]
+			if strings.Contains(content, "---") {
+				t.Error("ROOT ancestor section still contains frontmatter delimiters")
+			}
+			if strings.Contains(content, "version") {
+				t.Error("ROOT ancestor section still contains version field")
+			}
+		}
+		if strings.Contains(section, "node: ROOT/a\n") {
+			foundTarget = true
+			// The target section should preserve frontmatter
+			parts := strings.SplitN(section, "\n\n", 2)
+			if len(parts) < 2 {
+				t.Fatal("ROOT/a section missing content separator")
+			}
+			content := parts[1]
+			if !strings.Contains(content, "---") {
+				t.Error("target section missing frontmatter delimiters")
+			}
+			if !strings.Contains(content, "version: 2") {
+				t.Error("target section missing version field")
+			}
+		}
+	}
+
+	if !foundRootAncestor {
+		t.Error("did not find ROOT ancestor section in output")
+	}
+	if !foundTarget {
+		t.Error("did not find ROOT/a target section in output")
+	}
+}
+
+// TestFrontmatterStrippedFromDependencyFiles verifies that
+// dependency files have their YAML frontmatter stripped.
+func TestFrontmatterStrippedFromDependencyFiles(t *testing.T) {
+	tmp := t.TempDir()
+
+	writeFile(t, tmp, "code-from-spec/spec/_node.md", `---
+version: 1
+---
+
+# ROOT
+`)
+
+	writeFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
+version: 1
+parent_version: 1
+depends_on:
+  - path: EXTERNAL/db
+    version: 1
+implements:
+  - src/a.go
+---
+
+# ROOT/a
+`)
+
+	writeFile(t, tmp, "code-from-spec/external/db/_external.md", `---
+version: 1
+---
+
+# EXTERNAL/db
+
+Database schema reference.
+`)
+
+	writeFile(t, tmp, "code-from-spec/external/db/data.sql", `SELECT 1;`)
+
+	chdir(t, tmp)
+
+	result := callHandler(t, "ROOT/a")
+
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", resultText(t, result))
+	}
+
+	text := resultText(t, result)
+
+	// Find the EXTERNAL/db _external.md section
+	sections := strings.Split(text, "<<<FILE_")
+	foundExternal := false
+
+	for _, section := range sections {
+		if section == "" {
+			continue
+		}
+		if strings.Contains(section, "node: EXTERNAL/db") && strings.Contains(section, "_external.md") {
+			foundExternal = true
+			// Extract the file content after the blank line separator
+			parts := strings.SplitN(section, "\n\n", 2)
+			if len(parts) < 2 {
+				t.Fatal("EXTERNAL/db section missing content separator")
+			}
+			content := parts[1]
+			// Should NOT contain frontmatter
+			if strings.Contains(content, "---") {
+				t.Error("dependency _external.md section still contains frontmatter delimiters")
+			}
+			if strings.Contains(content, "version: 1") {
+				t.Error("dependency _external.md section still contains version field")
+			}
+			// Should still contain the body
+			if !strings.Contains(content, "Database schema reference") {
+				t.Error("dependency _external.md section missing body content")
+			}
+		}
+	}
+
+	if !foundExternal {
+		t.Error("did not find EXTERNAL/db _external.md section in output")
+	}
+
+	// The target section (ROOT/a) should still have frontmatter
+	foundTarget := false
+	for _, section := range sections {
+		if strings.Contains(section, "node: ROOT/a\n") {
+			foundTarget = true
+			parts := strings.SplitN(section, "\n\n", 2)
+			if len(parts) < 2 {
+				t.Fatal("ROOT/a section missing content separator")
+			}
+			content := parts[1]
+			if !strings.Contains(content, "---") {
+				t.Error("target section should preserve frontmatter")
+			}
+		}
+	}
+	if !foundTarget {
+		t.Error("did not find ROOT/a target section")
+	}
+}
+
+// TestExistingCodeFilesIncludedInOutput verifies that existing
+// code files listed in implements are included in the output with
+// path: header and no node: header.
+func TestExistingCodeFilesIncludedInOutput(t *testing.T) {
+	tmp := t.TempDir()
+
+	writeFile(t, tmp, "code-from-spec/spec/_node.md", `---
+version: 1
+---
+
+# ROOT
+`)
+
+	writeFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
+version: 1
+parent_version: 1
+implements:
+  - src/a.go
+---
+
+# ROOT/a
+`)
+
+	// Create the implemented file with known content
+	writeFile(t, tmp, "src/a.go", `package a
+
+func Hello() string { return "hello" }
+`)
+
+	chdir(t, tmp)
+
+	result := callHandler(t, "ROOT/a")
+
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", resultText(t, result))
+	}
+
+	text := resultText(t, result)
+
+	// Find the code file section — should have path: but no node:
+	sections := strings.Split(text, "<<<FILE_")
+	foundCode := false
+
+	for _, section := range sections {
+		if section == "" {
+			continue
+		}
+		if strings.Contains(section, "path: src/a.go") {
+			foundCode = true
+
+			// Extract the header lines (before the blank line)
+			parts := strings.SplitN(section, "\n\n", 2)
+			if len(parts) < 2 {
+				t.Fatal("code section missing content separator")
+			}
+			header := parts[0]
+			content := parts[1]
+
+			// Code files should NOT have a node: header
+			if strings.Contains(header, "node:") {
+				t.Error("code file section should not have node: header")
+			}
+
+			// Content should match what was written
+			if !strings.Contains(content, `func Hello() string { return "hello" }`) {
+				t.Error("code file content does not match written content")
+			}
+		}
+	}
+
+	if !foundCode {
+		t.Error("did not find src/a.go code file section in output")
+	}
+}
+
+// TestNonExistingCodeFilesOmittedFromOutput verifies that code
+// files that don't exist on disk are not included in the output.
+func TestNonExistingCodeFilesOmittedFromOutput(t *testing.T) {
+	tmp := t.TempDir()
+
+	writeFile(t, tmp, "code-from-spec/spec/_node.md", `---
+version: 1
+---
+
+# ROOT
+`)
+
+	writeFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
+version: 1
+parent_version: 1
+implements:
+  - src/a.go
+---
+
+# ROOT/a
+`)
+
+	// Do NOT create src/a.go
+
+	chdir(t, tmp)
+
+	result := callHandler(t, "ROOT/a")
+
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", resultText(t, result))
+	}
+
+	text := resultText(t, result)
+
+	// The output should NOT contain a section for src/a.go
+	if strings.Contains(text, "path: src/a.go") {
+		t.Error("output should not contain a section for non-existing code file src/a.go")
 	}
 }
 
 // --- Failure Cases ---
 
-// TestInvalidPrefix verifies that a logical name not starting with
-// ROOT/ or TEST/ returns a tool error.
+// TestInvalidPrefix verifies that a logical name with an invalid
+// prefix returns a tool error.
 func TestInvalidPrefix(t *testing.T) {
-	dir := t.TempDir()
-	chdir(t, dir)
+	tmp := t.TempDir()
+	chdir(t, tmp)
 
-	result := callLoadChain(t, "EXTERNAL/something")
+	result := callHandler(t, "EXTERNAL/something")
 
 	if !result.IsError {
 		t.Fatal("expected tool error for EXTERNAL/ prefix")
@@ -252,11 +629,10 @@ func TestInvalidPrefix(t *testing.T) {
 // TestNonexistentSpecFile verifies that a logical name pointing
 // to a nonexistent spec file returns a tool error.
 func TestNonexistentSpecFile(t *testing.T) {
-	dir := t.TempDir()
-	chdir(t, dir)
+	tmp := t.TempDir()
+	chdir(t, tmp)
 
-	// Do NOT create ROOT/nonexistent spec file.
-	result := callLoadChain(t, "ROOT/nonexistent")
+	result := callHandler(t, "ROOT/nonexistent")
 
 	if !result.IsError {
 		t.Fatal("expected tool error for nonexistent spec file")
@@ -264,15 +640,29 @@ func TestNonexistentSpecFile(t *testing.T) {
 }
 
 // TestNoImplements verifies that a node without implements
-// returns a tool error containing "has no implements".
+// returns a tool error.
 func TestNoImplements(t *testing.T) {
-	dir := t.TempDir()
-	chdir(t, dir)
+	tmp := t.TempDir()
 
-	createFile(t, dir, "code-from-spec/spec/_node.md", rootNode())
-	createFile(t, dir, "code-from-spec/spec/a/_node.md", leafNodeNoImplements())
+	writeFile(t, tmp, "code-from-spec/spec/_node.md", `---
+version: 1
+---
 
-	result := callLoadChain(t, "ROOT/a")
+# ROOT
+`)
+
+	// Create ROOT/a without implements
+	writeFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
+version: 1
+parent_version: 1
+---
+
+# ROOT/a — no implements
+`)
+
+	chdir(t, tmp)
+
+	result := callHandler(t, "ROOT/a")
 
 	if !result.IsError {
 		t.Fatal("expected tool error for node with no implements")
@@ -284,37 +674,67 @@ func TestNoImplements(t *testing.T) {
 	}
 }
 
-// TestInvalidImplementsPathTraversal verifies that a node with
-// a path-traversal implements entry returns a tool error from
-// path validation.
+// TestInvalidImplementsPathTraversal verifies that a path traversal
+// in implements causes a tool error from path validation.
 func TestInvalidImplementsPathTraversal(t *testing.T) {
-	dir := t.TempDir()
-	chdir(t, dir)
+	tmp := t.TempDir()
 
-	createFile(t, dir, "code-from-spec/spec/_node.md", rootNode())
-	createFile(t, dir, "code-from-spec/spec/a/_node.md",
-		"---\nversion: 1\nimplements:\n  - \"../../etc/passwd\"\n---\n# Leaf with bad path\n")
+	writeFile(t, tmp, "code-from-spec/spec/_node.md", `---
+version: 1
+---
 
-	result := callLoadChain(t, "ROOT/a")
+# ROOT
+`)
+
+	writeFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
+version: 1
+parent_version: 1
+implements:
+  - "../../etc/passwd"
+---
+
+# ROOT/a
+`)
+
+	chdir(t, tmp)
+
+	result := callHandler(t, "ROOT/a")
 
 	if !result.IsError {
 		t.Fatal("expected tool error for path traversal in implements")
 	}
 }
 
-// TestUnresolvableDependency verifies that a node with a dependency
-// pointing to a nonexistent node returns a tool error from chain
-// resolution.
+// TestUnresolvableDependency verifies that a dependency whose
+// spec file does not exist causes a tool error.
 func TestUnresolvableDependency(t *testing.T) {
-	dir := t.TempDir()
-	chdir(t, dir)
+	tmp := t.TempDir()
 
-	createFile(t, dir, "code-from-spec/spec/_node.md", rootNode())
-	// ROOT/a depends on ROOT/b which does not exist
-	createFile(t, dir, "code-from-spec/spec/a/_node.md",
-		"---\nversion: 1\nimplements:\n  - internal/foo/foo.go\ndepends_on:\n  - path: ROOT/b\n---\n# Leaf with missing dep\n")
+	writeFile(t, tmp, "code-from-spec/spec/_node.md", `---
+version: 1
+---
 
-	result := callLoadChain(t, "ROOT/a")
+# ROOT
+`)
+
+	writeFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
+version: 1
+parent_version: 1
+depends_on:
+  - path: ROOT/b
+    version: 1
+implements:
+  - src/a.go
+---
+
+# ROOT/a
+`)
+
+	// Do NOT create ROOT/b's spec file
+
+	chdir(t, tmp)
+
+	result := callHandler(t, "ROOT/a")
 
 	if !result.IsError {
 		t.Fatal("expected tool error for unresolvable dependency")

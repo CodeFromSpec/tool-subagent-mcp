@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/server@v34
+// spec: ROOT/tech_design/server@v40
 package main
 
 import (
@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/CodeFromSpec/tool-subagent-mcp/internal/load_chain"
+	"github.com/CodeFromSpec/tool-subagent-mcp/internal/write_file"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-
-	load_chain "github.com/CodeFromSpec/tool-subagent-mcp/internal/load_chain"
-	write_file "github.com/CodeFromSpec/tool-subagent-mcp/internal/write_file"
 )
 
-// usageMessage is the exact text printed for help or invalid arguments.
+// usageMessage is the help text printed when the binary is invoked
+// with arguments. Defined as a constant so it is shared between
+// the help (stdout) and error (stderr) paths.
 const usageMessage = `Usage: subagent-mcp
 
 Starts an MCP server over stdin/stdout for Code from Spec
@@ -39,15 +40,15 @@ MCP configuration example:
 `
 
 func main() {
-	// Step 1-2: Argument validation.
+	// Step 1–2: Argument validation.
+	// Any argument triggers the usage message. Help flags go to
+	// stdout with exit 0; anything else goes to stderr with exit 1.
 	if len(os.Args) > 1 {
 		arg := os.Args[1]
-		// Help flags print to stdout and exit 0.
 		if arg == "--help" || arg == "-h" || arg == "help" {
 			fmt.Print(usageMessage)
 			os.Exit(0)
 		}
-		// Any other argument prints to stderr and exits 1.
 		fmt.Fprint(os.Stderr, usageMessage)
 		os.Exit(1)
 	}
@@ -57,25 +58,28 @@ func main() {
 		Name: "subagent-mcp",
 	}, nil)
 
-	// Step 4: Register tools with their handlers from the
-	// corresponding internal packages.
+	// Step 4: Register tools.
+	// Tool names and descriptions come from the corresponding tool
+	// definition specs (load_chain and write_file).
 
-	// Register load_chain tool.
+	// Register load_chain — loads the spec chain for a given
+	// logical name and returns all relevant spec files concatenated.
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "load_chain",
 		Description: "Load the spec chain context for a given logical name. Returns all relevant spec files concatenated in a single response.",
 	}, load_chain.HandleLoadChain)
 
-	// Register write_file tool.
+	// Register write_file — writes a generated source file to disk,
+	// validating the path against the node's implements list.
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "write_file",
 		Description: "Write a generated source file to disk. The path must be one of the files declared in the node's implements list. Overwrites existing content.",
 	}, write_file.HandleWriteFile)
 
-	// Step 5-7: Run the server over stdio. Blocks until the
-	// client disconnects.
+	// Step 5–7: Run the server over stdio. Blocks until the client
+	// disconnects. If Run returns an error, print it and exit 1.
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
 		os.Exit(1)
 	}
 }

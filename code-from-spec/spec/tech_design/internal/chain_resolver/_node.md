@@ -1,5 +1,5 @@
 ---
-version: 53
+version: 65
 parent_version: 11
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -7,7 +7,7 @@ depends_on:
   - path: ROOT/tech_design/internal/frontmatter
     version: 27
   - path: ROOT/tech_design/internal/logical_names
-    version: 24
+    version: 26
 implements:
   - internal/chainresolver/chainresolver.go
 ---
@@ -39,6 +39,7 @@ type Chain struct {
     Ancestors    []ChainItem
     Target       ChainItem
     Dependencies []ChainItem
+    Code         []string
 }
 
 func ResolveChain(targetLogicalName string) (*Chain, error)
@@ -76,21 +77,53 @@ For each entry in `DependsOn` whose `LogicalName` starts with
 1. Call `PathFromLogicalName` to get the file path.
 2. Verify the file exists on disk (using `os.Stat`). If it does
    not exist, return error: `"cannot resolve logical name: <name>"`.
-3. Add a `ChainItem` with a single-element `FilePaths` list to
-   `Dependencies`.
+3. If a `ChainItem` with the same logical name already exists
+   in `Dependencies`, skip it. Otherwise, add a `ChainItem`
+   with a single-element `FilePaths` list to `Dependencies`.
 
 For each entry in `DependsOn` whose `LogicalName` starts with
 `EXTERNAL/`:
 1. Call `PathFromLogicalName` to get the `_external.md` path.
-2. If the entry has a non-empty `Filter`, include `_external.md`
-   plus files in the dependency folder and any subfolders matching
-   any pattern. If no `Filter` is present, include all files in
-   the dependency folder and any subfolders. File paths are sorted
-   and relative to project root.
-3. Add a `ChainItem` with the collected `FilePaths` list to
-   `Dependencies`.
+2. Walk the dependency folder recursively using
+   `filepath.WalkDir`. Skip directories — only collect files.
+   If the entry has a non-empty `Filter`, include `_external.md`
+   plus files whose path relative to the dependency folder
+   matches any pattern using `path.Match` (from the `path`
+   package, not `filepath`). If no `Filter`
+   is present, include all files. File paths are sorted and
+   relative to project root.
+3. If a `ChainItem` with the same logical name already exists
+   in `Dependencies`, merge the collected file paths into the
+   existing item. Otherwise, add a new `ChainItem` with the
+   collected `FilePaths` list to `Dependencies`.
 
 Sort `Dependencies` by logical name alphabetically.
+
+**Step 3 — Code**
+
+Read the target node's frontmatter using `ParseFrontmatter`
+and extract the `Implements` list. For each path in
+`Implements`, check if the file exists on disk (using
+`os.Stat`). If it exists, add the path to `Code`. If it does
+not exist, skip it. `Code` contains only files that already
+exist.
+
+**Step 4 — Normalize file paths**
+
+Convert all file paths in `Ancestors`, `Target`,
+`Dependencies`, and `Code` to use forward slashes as
+separators, regardless of the operating system. Use
+`filepath.ToSlash`.
+
+**Step 5 — Deduplicate file paths**
+
+Review the `Ancestors` and `Dependencies` lists and remove
+duplicate file paths. Each file path must appear only once
+across the entire chain — including across `Ancestors` and
+`Dependencies`. When a path appears more than once, keep the
+first occurrence and discard subsequent ones. This step is
+necessary because a file path may appear in both an ancestor
+and a dependency.
 
 ### Error handling
 

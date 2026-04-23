@@ -1,19 +1,23 @@
 // Package logicalnames centralizes conversion between logical names and file paths.
-// spec: ROOT/tech_design/internal/logical_names@v24
+// spec: ROOT/tech_design/internal/logical_names@v26
 package logicalnames
 
-import "strings"
+import (
+	"path/filepath"
+	"strings"
+)
 
-// PathFromLogicalName resolves a logical name to a file path relative to the project root.
-// Returns ("", false) if the input does not match any known pattern.
+// PathFromLogicalName resolves a logical name to a file path relative to the
+// project root. Returns ("", false) if the input does not match any known pattern.
+// Returned paths always use forward slashes as separators.
 //
-// Supported patterns:
-//   ROOT            → code-from-spec/spec/_node.md
-//   ROOT/<path>     → code-from-spec/spec/<path>/_node.md
-//   TEST            → code-from-spec/spec/default.test.md
-//   TEST/<path>     → code-from-spec/spec/<path>/default.test.md
-//   TEST/<path>(<name>) → code-from-spec/spec/<path>/<name>.test.md
-//   EXTERNAL/<name> → code-from-spec/external/<name>/_external.md
+// Rules:
+//   - ROOT                    → code-from-spec/spec/_node.md
+//   - ROOT/<path>             → code-from-spec/spec/<path>/_node.md
+//   - TEST                    → code-from-spec/spec/default.test.md
+//   - TEST/<path>             → code-from-spec/spec/<path>/default.test.md
+//   - TEST/<path>(<name>)     → code-from-spec/spec/<path>/<name>.test.md
+//   - EXTERNAL/<name>         → code-from-spec/external/<name>/_external.md
 func PathFromLogicalName(logicalName string) (string, bool) {
 	if logicalName == "" {
 		return "", false
@@ -28,7 +32,8 @@ func PathFromLogicalName(logicalName string) (string, bool) {
 		if rest == "" {
 			return "", false
 		}
-		return "code-from-spec/spec/" + rest + "/_node.md", true
+		result := "code-from-spec/spec/" + rest + "/_node.md"
+		return filepath.ToSlash(result), true
 	}
 
 	// Handle TEST namespace.
@@ -40,12 +45,17 @@ func PathFromLogicalName(logicalName string) (string, bool) {
 		if rest == "" {
 			return "", false
 		}
+
 		// Check for parenthesized name: TEST/<path>(<name>)
 		path, name, hasName := parseTestName(rest)
 		if hasName {
-			return "code-from-spec/spec/" + path + "/" + name + ".test.md", true
+			result := "code-from-spec/spec/" + path + "/" + name + ".test.md"
+			return filepath.ToSlash(result), true
 		}
-		return "code-from-spec/spec/" + rest + "/default.test.md", true
+
+		// Default test: TEST/<path> → code-from-spec/spec/<path>/default.test.md
+		result := "code-from-spec/spec/" + rest + "/default.test.md"
+		return filepath.ToSlash(result), true
 	}
 
 	// Handle EXTERNAL namespace.
@@ -54,9 +64,10 @@ func PathFromLogicalName(logicalName string) (string, bool) {
 		if name == "" {
 			return "", false
 		}
-		// EXTERNAL only supports a single name segment (no further slashes
-		// are shown in the spec, but the spec only defines EXTERNAL/<name>).
-		return "code-from-spec/external/" + name + "/_external.md", true
+		// EXTERNAL only supports a single name segment (no further nesting
+		// beyond what is given as <name>).
+		result := "code-from-spec/external/" + name + "/_external.md"
+		return filepath.ToSlash(result), true
 	}
 
 	// No known pattern matched.
@@ -66,13 +77,12 @@ func PathFromLogicalName(logicalName string) (string, bool) {
 // HasParent determines whether a logical name has a parent node.
 // Returns (hasParent, ok) where ok indicates whether the input is a valid logical name.
 //
-//   ROOT              → (false, true)   — root has no parent
-//   ROOT/<path>       → (true,  true)
-//   TEST              → (true,  true)   — parent is ROOT
-//   TEST/<path>       → (true,  true)
-//   TEST/<path>(<n>)  → (true,  true)
-//   EXTERNAL/<name>   → (false, true)   — externals have no parent
-//   anything else     → (false, false)  — not a valid logical name
+// Rules:
+//   - ROOT                → (false, true)  — root has no parent
+//   - ROOT/<path>         → (true,  true)  — always has a parent
+//   - TEST (any form)     → (true,  true)  — parent is always in ROOT namespace
+//   - EXTERNAL/<name>     → (false, true)  — externals have no parent
+//   - anything else       → (false, false) — not a valid logical name
 func HasParent(logicalName string) (hasParent, ok bool) {
 	if logicalName == "" {
 		return false, false
@@ -90,7 +100,7 @@ func HasParent(logicalName string) (hasParent, ok bool) {
 		return true, true
 	}
 
-	// TEST namespace — always has a parent (in the ROOT namespace).
+	// TEST namespace — all valid TEST names have a parent.
 	if logicalName == "TEST" {
 		return true, true
 	}
@@ -102,7 +112,10 @@ func HasParent(logicalName string) (hasParent, ok bool) {
 		return true, true
 	}
 
-	// EXTERNAL namespace.
+	// EXTERNAL namespace — must have a name after the prefix.
+	if logicalName == "EXTERNAL" {
+		return false, false
+	}
 	if strings.HasPrefix(logicalName, "EXTERNAL/") {
 		name := logicalName[len("EXTERNAL/"):]
 		if name == "" {
@@ -111,36 +124,36 @@ func HasParent(logicalName string) (hasParent, ok bool) {
 		return false, true
 	}
 
-	// Bare "EXTERNAL" or anything else is not a valid logical name.
+	// Unknown namespace.
 	return false, false
 }
 
 // ParentLogicalName derives the parent's logical name from a node's logical name.
-// Returns (parent, true) on success, ("", false) if the node has no parent.
-// Only call after confirming HasParent returns true.
+// Returns ("", false) if the node has no parent. Only call after confirming
+// HasParent returns true.
 //
-//   ROOT/<single>     → ROOT
-//   ROOT/<a>/<b>/...  → ROOT/<a>/<b> (strip last segment)
-//   TEST              → ROOT
-//   TEST/<path>       → ROOT/<path>
-//   TEST/<path>(<n>)  → ROOT/<path>
+// Rules:
+//   - ROOT/<path>         → strip last segment; if one segment, parent is ROOT
+//   - TEST                → ROOT
+//   - TEST/<path>         → ROOT/<path>
+//   - TEST/<path>(<name>) → ROOT/<path>
 func ParentLogicalName(logicalName string) (string, bool) {
-	// ROOT namespace children.
+	// ROOT namespace.
 	if strings.HasPrefix(logicalName, "ROOT/") {
 		rest := logicalName[len("ROOT/"):]
 		if rest == "" {
 			return "", false
 		}
-		// Strip the last segment.
+		// Strip the last path segment.
 		lastSlash := strings.LastIndex(rest, "/")
 		if lastSlash == -1 {
-			// Only one segment: ROOT/<x> → ROOT.
+			// Only one segment — parent is ROOT.
 			return "ROOT", true
 		}
 		return "ROOT/" + rest[:lastSlash], true
 	}
 
-	// TEST namespace — parent is always in the ROOT namespace.
+	// TEST namespace.
 	if logicalName == "TEST" {
 		return "ROOT", true
 	}
@@ -149,36 +162,43 @@ func ParentLogicalName(logicalName string) (string, bool) {
 		if rest == "" {
 			return "", false
 		}
-		// Strip parenthesized name if present: TEST/<path>(<name>) → ROOT/<path>.
+
+		// Strip parenthesized name if present: TEST/<path>(<name>) → ROOT/<path>
 		path, _, hasName := parseTestName(rest)
 		if hasName {
 			return "ROOT/" + path, true
 		}
-		// TEST/<path> → ROOT/<path>.
+
+		// TEST/<path> → ROOT/<path>
 		return "ROOT/" + rest, true
 	}
 
-	// ROOT itself, EXTERNAL/*, and invalid names have no parent.
+	// ROOT itself, EXTERNAL, or anything else — no parent.
 	return "", false
 }
 
-// parseTestName checks whether s (the part after "TEST/") ends with a
-// parenthesized name like "x/y(name)". If so, it returns the path ("x/y"),
-// the name ("name"), and true. Otherwise it returns ("", "", false).
+// parseTestName checks if s ends with a parenthesized name like "x/y(name)".
+// Returns the path part, the name part, and whether a parenthesized name was found.
 func parseTestName(s string) (path, name string, ok bool) {
-	// The parenthesized name must be at the very end: ...(<name>)
+	// Look for the closing paren at the end.
 	if !strings.HasSuffix(s, ")") {
 		return "", "", false
 	}
-	openParen := strings.LastIndex(s, "(")
-	if openParen == -1 {
+
+	// Find the matching opening paren.
+	openIdx := strings.LastIndex(s, "(")
+	if openIdx == -1 || openIdx == 0 {
 		return "", "", false
 	}
+
 	// Extract path and name.
-	path = s[:openParen]
-	name = s[openParen+1 : len(s)-1]
+	path = s[:openIdx]
+	name = s[openIdx+1 : len(s)-1]
+
+	// Both parts must be non-empty.
 	if path == "" || name == "" {
 		return "", "", false
 	}
+
 	return path, name, true
 }

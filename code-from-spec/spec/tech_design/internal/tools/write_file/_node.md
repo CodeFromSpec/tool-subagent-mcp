@@ -1,5 +1,5 @@
 ---
-version: 30
+version: 33
 parent_version: 3
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
@@ -7,7 +7,7 @@ depends_on:
   - path: ROOT/tech_design/internal/frontmatter
     version: 27
   - path: ROOT/tech_design/internal/logical_names
-    version: 24
+    version: 26
   - path: ROOT/tech_design/internal/pathvalidation
     version: 10
 implements:
@@ -82,16 +82,19 @@ func HandleWriteFile(
    return a tool error wrapping the underlying error.
 4. Validate `Implements` is not empty → tool error:
    `"node <name> has no implements"`.
-5. Call `ValidatePath` on `args.Path` against the working
-   directory. If it fails, return a tool error with the
-   validation error and the list of valid `implements` paths.
-6. Check that `args.Path` appears in the frontmatter's
+5. Normalize `args.Path` to forward slashes using
+   `filepath.ToSlash`.
+6. Call `ValidatePath` on the normalized path against the
+   working directory. If it fails, return a tool error with
+   the validation error and the list of valid `implements`
+   paths.
+7. Check that the normalized path appears in the frontmatter's
    `Implements` (exact string match). If not, return a tool
    error listing the valid paths.
-7. Create any missing intermediate directories for the target
+8. Create any missing intermediate directories for the target
    path.
-8. Write `args.Content` to the file, overwriting if it exists.
-9. Return a success result with text `"wrote <path>"`.
+9. Write `args.Content` to the file, overwriting if it exists.
+10. Return a success result with text `"wrote <path>"`.
 
 ### Error handling
 

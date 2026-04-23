@@ -1,9 +1,8 @@
-// spec: TEST/tech_design/internal/tools/write_file@v3
+// spec: TEST/tech_design/internal/tools/write_file@v5
 package write_file
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,46 +12,42 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// helperCreateSpecFile creates a spec node file at the path that
-// PathFromLogicalName would resolve to, with the given implements list.
-// For logical name "ROOT/a", the file path is
-// "code-from-spec/spec/a/_node.md" relative to root.
-func helperCreateSpecFile(t *testing.T, root string, implements []string) {
+// setupSpecTree creates a minimal spec tree inside tmpDir with a single node
+// whose frontmatter contains the given implements list. It returns the
+// logical name "ROOT/a".
+func setupSpecTree(t *testing.T, tmpDir string, implements []string) {
 	t.Helper()
 
-	// Build the frontmatter YAML for the implements list.
-	specDir := filepath.Join(root, "code-from-spec", "spec", "a")
-	if err := os.MkdirAll(specDir, 0o755); err != nil {
+	// Build the implements YAML list.
+	var implLines string
+	for _, p := range implements {
+		implLines += "  - " + p + "\n"
+	}
+
+	content := "---\nversion: 1\nimplements:\n" + implLines + "---\n\n# ROOT/a\n"
+
+	// ROOT/a maps to code-from-spec/spec/a/_node.md
+	nodeDir := filepath.Join(tmpDir, "code-from-spec", "spec", "a")
+	if err := os.MkdirAll(nodeDir, 0o755); err != nil {
 		t.Fatalf("failed to create spec dir: %v", err)
 	}
-
-	var implLines string
-	if len(implements) > 0 {
-		implLines = "implements:\n"
-		for _, p := range implements {
-			implLines += fmt.Sprintf("  - %s\n", p)
-		}
-	}
-
-	content := fmt.Sprintf("---\nversion: 1\n%s---\n\n# ROOT/a\n", implLines)
-	filePath := filepath.Join(specDir, "_node.md")
-	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(nodeDir, "_node.md"), []byte(content), 0o644); err != nil {
 		t.Fatalf("failed to write spec file: %v", err)
 	}
 }
 
-// helperCallHandler calls HandleWriteFile with the given args and returns
-// the result. It changes the working directory to root for the duration
-// of the call.
-func helperCallHandler(t *testing.T, root string, args WriteFileArgs) *mcp.CallToolResult {
+// callHandler is a helper that changes to tmpDir, calls HandleWriteFile,
+// and restores the original working directory.
+func callHandler(t *testing.T, tmpDir string, args WriteFileArgs) *mcp.CallToolResult {
 	t.Helper()
 
-	// Save and restore the working directory.
+	// Save and restore working directory — the handler resolves paths
+	// against the process working directory (project root).
 	origDir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("failed to get working directory: %v", err)
 	}
-	if err := os.Chdir(root); err != nil {
+	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatalf("failed to chdir to temp dir: %v", err)
 	}
 	t.Cleanup(func() {
@@ -66,37 +61,8 @@ func helperCallHandler(t *testing.T, root string, args WriteFileArgs) *mcp.CallT
 	return result
 }
 
-// helperAssertSuccess checks that the result is not an error and that
-// the text content matches the expected string.
-func helperAssertSuccess(t *testing.T, result *mcp.CallToolResult, expectedText string) {
-	t.Helper()
-	if result.IsError {
-		text := helperResultText(t, result)
-		t.Fatalf("expected success but got tool error: %s", text)
-	}
-	text := helperResultText(t, result)
-	if text != expectedText {
-		t.Errorf("expected text %q, got %q", expectedText, text)
-	}
-}
-
-// helperAssertToolError checks that the result is a tool error and
-// that the text content contains the expected substring.
-func helperAssertToolError(t *testing.T, result *mcp.CallToolResult, substr string) {
-	t.Helper()
-	if !result.IsError {
-		text := helperResultText(t, result)
-		t.Fatalf("expected tool error but got success: %s", text)
-	}
-	text := helperResultText(t, result)
-	if !strings.Contains(text, substr) {
-		t.Errorf("expected error containing %q, got %q", substr, text)
-	}
-}
-
-// helperResultText extracts the text from the first TextContent entry
-// in the result.
-func helperResultText(t *testing.T, result *mcp.CallToolResult) string {
+// resultText extracts the text content from a CallToolResult.
+func resultText(t *testing.T, result *mcp.CallToolResult) string {
 	t.Helper()
 	if len(result.Content) == 0 {
 		t.Fatal("result has no content")
@@ -110,62 +76,66 @@ func helperResultText(t *testing.T, result *mcp.CallToolResult) string {
 
 // --- Happy Path ---
 
-// TestWritesFileSuccessfully verifies that a valid write_file call
-// creates the file on disk with the correct content.
 func TestWritesFileSuccessfully(t *testing.T) {
-	root := t.TempDir()
-	helperCreateSpecFile(t, root, []string{"output/file.go"})
+	tmpDir := t.TempDir()
+	setupSpecTree(t, tmpDir, []string{"output/file.go"})
 
-	result := helperCallHandler(t, root, WriteFileArgs{
+	result := callHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "output/file.go",
 		Content:     "package main",
 	})
 
-	helperAssertSuccess(t, result, "wrote output/file.go")
+	// Expect success.
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", resultText(t, result))
+	}
 
-	// Verify the file exists on disk with the correct content.
-	data, err := os.ReadFile(filepath.Join(root, "output", "file.go"))
+	text := resultText(t, result)
+	if text != "wrote output/file.go" {
+		t.Errorf("expected %q, got %q", "wrote output/file.go", text)
+	}
+
+	// Verify file exists on disk with correct content.
+	data, err := os.ReadFile(filepath.Join(tmpDir, "output", "file.go"))
 	if err != nil {
 		t.Fatalf("failed to read written file: %v", err)
 	}
 	if string(data) != "package main" {
-		t.Errorf("expected file content %q, got %q", "package main", string(data))
+		t.Errorf("expected content %q, got %q", "package main", string(data))
 	}
 }
 
-// TestCreatesIntermediateDirectories verifies that missing parent
-// directories are created automatically.
 func TestCreatesIntermediateDirectories(t *testing.T) {
-	root := t.TempDir()
-	helperCreateSpecFile(t, root, []string{"deep/nested/dir/file.go"})
+	tmpDir := t.TempDir()
+	setupSpecTree(t, tmpDir, []string{"deep/nested/dir/file.go"})
 
-	result := helperCallHandler(t, root, WriteFileArgs{
+	result := callHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "deep/nested/dir/file.go",
-		Content:     "package deep",
+		Content:     "package nested",
 	})
 
-	helperAssertSuccess(t, result, "wrote deep/nested/dir/file.go")
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", resultText(t, result))
+	}
 
-	// Verify the file and directories exist.
-	data, err := os.ReadFile(filepath.Join(root, "deep", "nested", "dir", "file.go"))
+	// Verify directories were created and file exists.
+	data, err := os.ReadFile(filepath.Join(tmpDir, "deep", "nested", "dir", "file.go"))
 	if err != nil {
 		t.Fatalf("failed to read written file: %v", err)
 	}
-	if string(data) != "package deep" {
-		t.Errorf("expected file content %q, got %q", "package deep", string(data))
+	if string(data) != "package nested" {
+		t.Errorf("expected content %q, got %q", "package nested", string(data))
 	}
 }
 
-// TestOverwritesExistingFile verifies that an existing file is
-// replaced with new content.
 func TestOverwritesExistingFile(t *testing.T) {
-	root := t.TempDir()
-	helperCreateSpecFile(t, root, []string{"output/file.go"})
+	tmpDir := t.TempDir()
+	setupSpecTree(t, tmpDir, []string{"output/file.go"})
 
-	// Create the initial file.
-	outDir := filepath.Join(root, "output")
+	// Write an initial file at the target path.
+	outDir := filepath.Join(tmpDir, "output")
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		t.Fatalf("failed to create output dir: %v", err)
 	}
@@ -173,130 +143,172 @@ func TestOverwritesExistingFile(t *testing.T) {
 		t.Fatalf("failed to write initial file: %v", err)
 	}
 
-	result := helperCallHandler(t, root, WriteFileArgs{
+	// Overwrite with new content.
+	result := callHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "output/file.go",
 		Content:     "new content",
 	})
 
-	helperAssertSuccess(t, result, "wrote output/file.go")
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", resultText(t, result))
+	}
 
 	// Verify the file was overwritten.
 	data, err := os.ReadFile(filepath.Join(outDir, "file.go"))
 	if err != nil {
-		t.Fatalf("failed to read written file: %v", err)
+		t.Fatalf("failed to read file: %v", err)
 	}
 	if string(data) != "new content" {
-		t.Errorf("expected file content %q, got %q", "new content", string(data))
+		t.Errorf("expected %q, got %q", "new content", string(data))
+	}
+}
+
+func TestBackslashPathNormalized(t *testing.T) {
+	// Skip on non-Windows — backslash is a valid filename character
+	// on Linux/macOS, not a path separator.
+	if runtime.GOOS != "windows" {
+		t.Skip("backslash normalization only applies on Windows")
+	}
+
+	tmpDir := t.TempDir()
+	setupSpecTree(t, tmpDir, []string{"output/file.go"})
+
+	result := callHandler(t, tmpDir, WriteFileArgs{
+		LogicalName: "ROOT/a",
+		Path:        "output\\file.go",
+		Content:     "package main",
+	})
+
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", resultText(t, result))
+	}
+
+	text := resultText(t, result)
+	if text != "wrote output/file.go" {
+		t.Errorf("expected %q, got %q", "wrote output/file.go", text)
 	}
 }
 
 // --- Failure Cases ---
 
-// TestInvalidLogicalNamePrefix verifies that a logical name not
-// starting with ROOT/ or TEST/ is rejected.
 func TestInvalidLogicalNamePrefix(t *testing.T) {
-	root := t.TempDir()
+	tmpDir := t.TempDir()
 
-	result := helperCallHandler(t, root, WriteFileArgs{
+	result := callHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "EXTERNAL/something",
-		Path:        "output/file.go",
-		Content:     "package main",
+		Path:        "some/file.go",
+		Content:     "content",
 	})
 
-	helperAssertToolError(t, result, "EXTERNAL/something")
+	if !result.IsError {
+		t.Fatal("expected tool error for invalid logical name prefix")
+	}
 }
 
-// TestNonexistentLogicalName verifies that a logical name with no
-// corresponding spec file is rejected.
 func TestNonexistentLogicalName(t *testing.T) {
-	root := t.TempDir()
+	tmpDir := t.TempDir()
+	// Do not create any spec file for ROOT/nonexistent.
 
-	// Do not create any spec file — the logical name resolves to
-	// a path that does not exist.
-	result := helperCallHandler(t, root, WriteFileArgs{
+	result := callHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/nonexistent",
-		Path:        "output/file.go",
-		Content:     "package main",
+		Path:        "some/file.go",
+		Content:     "content",
 	})
 
-	helperAssertToolError(t, result, "")
+	if !result.IsError {
+		t.Fatal("expected tool error for nonexistent logical name")
+	}
 }
 
-// TestPathNotInImplements verifies that a path not listed in the
-// node's implements is rejected with an actionable error.
 func TestPathNotInImplements(t *testing.T) {
-	root := t.TempDir()
-	helperCreateSpecFile(t, root, []string{"allowed/file.go"})
+	tmpDir := t.TempDir()
+	setupSpecTree(t, tmpDir, []string{"allowed/file.go"})
 
-	result := helperCallHandler(t, root, WriteFileArgs{
+	result := callHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "other/file.go",
-		Content:     "package main",
+		Content:     "content",
 	})
 
-	helperAssertToolError(t, result, "path not allowed")
-	// The error should also list the allowed paths.
-	text := helperResultText(t, result)
+	if !result.IsError {
+		t.Fatal("expected tool error for path not in implements")
+	}
+
+	text := resultText(t, result)
+	if !strings.Contains(text, "path not allowed") {
+		t.Errorf("expected error to contain %q, got %q", "path not allowed", text)
+	}
+	// Should list the allowed paths.
 	if !strings.Contains(text, "allowed/file.go") {
 		t.Errorf("expected error to list allowed paths, got %q", text)
 	}
 }
 
-// TestPathTraversalAttempt verifies that directory traversal in
-// the implements list is caught by ValidatePath.
 func TestPathTraversalAttempt(t *testing.T) {
-	root := t.TempDir()
-	helperCreateSpecFile(t, root, []string{"../../etc/passwd"})
+	tmpDir := t.TempDir()
+	setupSpecTree(t, tmpDir, []string{"../../etc/passwd"})
 
-	result := helperCallHandler(t, root, WriteFileArgs{
+	result := callHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "../../etc/passwd",
-		Content:     "malicious",
+		Content:     "content",
 	})
 
-	helperAssertToolError(t, result, "")
+	if !result.IsError {
+		t.Fatal("expected tool error for path traversal attempt")
+	}
 }
 
-// TestEmptyPath verifies that an empty path is rejected.
 func TestEmptyPath(t *testing.T) {
-	root := t.TempDir()
-	helperCreateSpecFile(t, root, []string{"some/file.go"})
+	tmpDir := t.TempDir()
+	setupSpecTree(t, tmpDir, []string{"some/file.go"})
 
-	result := helperCallHandler(t, root, WriteFileArgs{
+	result := callHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "",
-		Content:     "package main",
+		Content:     "content",
 	})
 
-	helperAssertToolError(t, result, "path is empty")
+	if !result.IsError {
+		t.Fatal("expected tool error for empty path")
+	}
+
+	text := resultText(t, result)
+	if !strings.Contains(text, "path is empty") {
+		t.Errorf("expected error to contain %q, got %q", "path is empty", text)
+	}
 }
 
-// TestSymlinkEscapingProjectRoot verifies that a symlink pointing
-// outside the project root is detected and rejected.
 func TestSymlinkEscapingProjectRoot(t *testing.T) {
-	// Symlink creation may require elevated privileges on Windows.
-	if runtime.GOOS == "windows" {
-		t.Skip("symlink test skipped on Windows (may require elevated privileges)")
+	// Symlinks may require elevated privileges on Windows.
+	// Skip if we cannot create one.
+	tmpDir := t.TempDir()
+
+	// Create a directory outside the temp dir to be the symlink target.
+	outsideDir := t.TempDir()
+
+	// Create a symlink inside tmpDir pointing outside.
+	symlinkPath := filepath.Join(tmpDir, "escape")
+	if err := os.Symlink(outsideDir, symlinkPath); err != nil {
+		t.Skipf("cannot create symlink (may need elevated privileges): %v", err)
 	}
 
-	root := t.TempDir()
-	outside := t.TempDir()
+	// Set up spec tree with the symlink-based path in implements.
+	setupSpecTree(t, tmpDir, []string{"escape/evil.go"})
 
-	// Create a symlink inside root that points outside it.
-	symlinkPath := filepath.Join(root, "escape")
-	if err := os.Symlink(outside, symlinkPath); err != nil {
-		t.Fatalf("failed to create symlink: %v", err)
-	}
-
-	// The implements list includes a path through the symlink.
-	helperCreateSpecFile(t, root, []string{"escape/file.go"})
-
-	result := helperCallHandler(t, root, WriteFileArgs{
+	result := callHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/a",
-		Path:        "escape/file.go",
-		Content:     "malicious",
+		Path:        "escape/evil.go",
+		Content:     "content",
 	})
 
-	helperAssertToolError(t, result, "resolves outside project root")
+	if !result.IsError {
+		t.Fatal("expected tool error for symlink escaping project root")
+	}
+
+	text := resultText(t, result)
+	if !strings.Contains(text, "resolves outside project root") {
+		t.Errorf("expected error to contain %q, got %q", "resolves outside project root", text)
+	}
 }

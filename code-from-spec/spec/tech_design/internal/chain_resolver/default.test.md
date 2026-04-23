@@ -1,6 +1,6 @@
 ---
-version: 12
-parent_version: 53
+version: 17
+parent_version: 65
 implements:
   - internal/chainresolver/chainresolver_test.go
 ---
@@ -28,6 +28,7 @@ Expect:
 - `Ancestors`: `ROOT`, `ROOT/a` (sorted alphabetically)
 - `Target`: `ROOT/a/b`
 - `Dependencies`: empty
+- `Code`: empty
 
 ### Leaf node — with ROOT/ dependency
 
@@ -103,6 +104,97 @@ Input: `"ROOT/a"`
 
 Expect:
 - `Dependencies` sorted: `ROOT/b`, `ROOT/m`, `ROOT/z`
+
+### Leaf node — implements file exists on disk
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with
+`implements: ["src/a.go"]`). Create the file `src/a.go` on
+disk.
+
+Input: `"ROOT/a"`
+
+Expect:
+- `Code`: `["src/a.go"]`
+
+### Leaf node — implements file does not exist
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with
+`implements: ["src/a.go"]`). Do not create `src/a.go`.
+
+Input: `"ROOT/a"`
+
+Expect:
+- `Code`: empty
+
+### Leaf node — some implements files exist, some do not
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with
+`implements: ["src/a.go", "src/b.go"]`). Create only
+`src/a.go` on disk.
+
+Input: `"ROOT/a"`
+
+Expect:
+- `Code`: `["src/a.go"]`
+
+### EXTERNAL/ with filter — subdirectories are excluded
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
+`EXTERNAL/api` with filter `["endpoints/*"]`). Create
+external dependency `api` with `_external.md`,
+`endpoints/create.md`, and a subdirectory
+`endpoints/drafts/` containing `endpoints/drafts/notes.md`.
+
+Input: `"ROOT/a"`
+
+Expect:
+- `Dependencies`: one item `EXTERNAL/api` with `FilePaths`
+  containing `_external.md` and `endpoints/create.md` only.
+  The subdirectory `endpoints/drafts/` must not appear in
+  `FilePaths`. The file `endpoints/drafts/notes.md` does not
+  match the filter and must not appear.
+
+## Edge Cases
+
+### Test node — shared EXTERNAL/ dependency is deduplicated
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
+`EXTERNAL/db`). Create test node `TEST/a` with depends_on
+`EXTERNAL/db`. Create external dependency `db` with
+`_external.md` and `schema.sql`.
+
+Input: `"TEST/a"`
+
+Expect:
+- `Dependencies`: one item `EXTERNAL/db` (not two), with
+  `FilePaths` containing `_external.md` and `schema.sql`
+
+### Duplicate ROOT/ dependency is deduplicated
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
+`ROOT/b` listed twice), `ROOT/b`.
+
+Input: `"ROOT/a"`
+
+Expect:
+- `Dependencies`: one item `ROOT/b` (not two)
+
+### EXTERNAL/ with overlapping filters — files deduplicated
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
+`EXTERNAL/api`). Create test node `TEST/a` with depends_on
+`EXTERNAL/api` with filter `["docs/*"]`. Create external
+dependency `api` with `_external.md`, `docs/ref.md`,
+`types.md`.
+
+Input: `"TEST/a"`
+
+Expect:
+- `Dependencies`: one item `EXTERNAL/api`. `FilePaths`
+  contains `_external.md`, `docs/ref.md`, `types.md` — each
+  appearing only once. The leaf's unfiltered reference imports
+  the full folder; the test node's filtered reference does not
+  add duplicates.
 
 ## Failure Cases
 

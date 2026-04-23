@@ -1,5 +1,5 @@
 ---
-version: 24
+version: 26
 parent_version: 11
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -33,7 +33,9 @@ func ParentLogicalName(logicalName string) (string, bool)
 ### PathFromLogicalName
 
 Resolves a logical name to a file path relative to the
-project root.
+project root. Returned paths always use forward slashes as
+separators, regardless of the operating system. Use
+`filepath.ToSlash` on the result before returning.
 
 | Logical name | File path |
 |---|---|

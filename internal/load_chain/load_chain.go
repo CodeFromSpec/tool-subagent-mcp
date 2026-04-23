@@ -1,8 +1,4 @@
-// Package load_chain implements the load_chain MCP tool handler.
-// It validates a logical name, resolves its spec chain, and returns
-// the concatenated chain content as a single MCP text response.
-//
-// spec: ROOT/tech_design/internal/tools/load_chain@v34
+// spec: ROOT/tech_design/internal/tools/load_chain@v49
 package load_chain
 
 import (
@@ -24,9 +20,9 @@ type LoadChainArgs struct {
 	LogicalName string `json:"logical_name" jsonschema:"Logical name of the node to generate code for."`
 }
 
-// HandleLoadChain is the MCP tool handler for load_chain. It validates
-// the logical name, resolves the spec chain, reads all files, and
-// returns the concatenated content using heredoc-style delimiters.
+// HandleLoadChain is the MCP tool handler for load_chain. It validates the
+// logical name, loads the spec chain, and returns the concatenated chain
+// content as a single MCP text response.
 func HandleLoadChain(
 	ctx context.Context,
 	req *mcp.CallToolRequest,
@@ -39,18 +35,19 @@ func HandleLoadChain(
 	}
 
 	// Step 2: Resolve the logical name to a file path.
-	targetPath, ok := logicalnames.PathFromLogicalName(args.LogicalName)
+	_, ok := logicalnames.PathFromLogicalName(args.LogicalName)
 	if !ok {
 		return toolError("invalid logical name: " + args.LogicalName), nil, nil
 	}
 
-	// Step 3: Parse frontmatter from the target node.
-	fm, err := frontmatter.ParseFrontmatter(targetPath)
+	// Step 3: Parse frontmatter from the resolved path.
+	nodePath, _ := logicalnames.PathFromLogicalName(args.LogicalName)
+	fm, err := frontmatter.ParseFrontmatter(nodePath)
 	if err != nil {
 		return toolError(fmt.Sprintf("error parsing frontmatter for %s: %v", args.LogicalName, err)), nil, nil
 	}
 
-	// Step 4a: Validate that implements is not empty.
+	// Step 4a: Implements must not be empty.
 	if len(fm.Implements) == 0 {
 		return toolError("node " + args.LogicalName + " has no implements"), nil, nil
 	}
@@ -58,85 +55,131 @@ func HandleLoadChain(
 	// Step 4b: Validate each implements path against the working directory.
 	wd, err := os.Getwd()
 	if err != nil {
-		return toolError(fmt.Sprintf("cannot determine working directory: %v", err)), nil, nil
+		return toolError(fmt.Sprintf("error getting working directory: %v", err)), nil, nil
 	}
 	for _, implPath := range fm.Implements {
-		if validErr := pathvalidation.ValidatePath(implPath, wd); validErr != nil {
-			return toolError(fmt.Sprintf("invalid implements path %q: %v", implPath, validErr)), nil, nil
+		if validateErr := pathvalidation.ValidatePath(implPath, wd); validateErr != nil {
+			return toolError(fmt.Sprintf("invalid implements path %q: %v", implPath, validateErr)), nil, nil
 		}
 	}
 
-	// Step 5: Generate a UUID and resolve the full chain.
-	id := uuid.New()
-	delimiter := id.String()
+	// Step 5: Generate a UUID for heredoc delimiters.
+	delimID := uuid.New().String()
 
+	// Step 6: Resolve the chain and build the output.
 	chain, err := chainresolver.ResolveChain(args.LogicalName)
 	if err != nil {
 		return toolError(fmt.Sprintf("error resolving chain for %s: %v", args.LogicalName, err)), nil, nil
 	}
 
-	// Build the concatenated chain content by reading all files.
-	var builder strings.Builder
+	var buf strings.Builder
 
-	// Helper to append a single chain item's files to the output.
-	appendItem := func(item chainresolver.ChainItem) error {
-		for _, filePath := range item.FilePaths {
-			data, readErr := os.ReadFile(filePath)
+	// Append ancestors — strip frontmatter from content.
+	for _, item := range chain.Ancestors {
+		for _, fp := range item.FilePaths {
+			content, readErr := os.ReadFile(fp)
 			if readErr != nil {
-				return fmt.Errorf("cannot read chain file %s: %v", filePath, readErr)
+				return toolError(fmt.Sprintf("error reading file %s: %v", fp, readErr)), nil, nil
 			}
+			stripped := stripFrontmatter(string(content))
+			writeSection(&buf, delimID, item.LogicalName, fp, stripped)
+		}
+	}
 
-			// Write opening delimiter with node and path headers.
-			fmt.Fprintf(&builder, "<<<FILE_%s>>>\n", delimiter)
-			fmt.Fprintf(&builder, "node: %s\n", item.LogicalName)
-			fmt.Fprintf(&builder, "path: %s\n", filePath)
-			builder.WriteString("\n")
-			builder.Write(data)
-			// Ensure content ends with a newline before the closing delimiter.
-			if len(data) > 0 && data[len(data)-1] != '\n' {
-				builder.WriteString("\n")
+	// Append target — do NOT strip frontmatter (subagent needs it).
+	for _, fp := range chain.Target.FilePaths {
+		content, readErr := os.ReadFile(fp)
+		if readErr != nil {
+			return toolError(fmt.Sprintf("error reading file %s: %v", fp, readErr)), nil, nil
+		}
+		writeSection(&buf, delimID, chain.Target.LogicalName, fp, string(content))
+	}
+
+	// Append dependencies — strip frontmatter from content.
+	for _, item := range chain.Dependencies {
+		for _, fp := range item.FilePaths {
+			content, readErr := os.ReadFile(fp)
+			if readErr != nil {
+				return toolError(fmt.Sprintf("error reading file %s: %v", fp, readErr)), nil, nil
 			}
-			fmt.Fprintf(&builder, "<<<END_FILE_%s>>>", delimiter)
-			builder.WriteString("\n")
-		}
-		return nil
-	}
-
-	// Append ancestors first.
-	for _, ancestor := range chain.Ancestors {
-		if err := appendItem(ancestor); err != nil {
-			return toolError(err.Error()), nil, nil
+			stripped := stripFrontmatter(string(content))
+			writeSection(&buf, delimID, item.LogicalName, fp, stripped)
 		}
 	}
 
-	// Append target.
-	if err := appendItem(chain.Target); err != nil {
-		return toolError(err.Error()), nil, nil
-	}
-
-	// Append dependencies.
-	for _, dep := range chain.Dependencies {
-		if err := appendItem(dep); err != nil {
-			return toolError(err.Error()), nil, nil
+	// Append code files — no node header, no frontmatter stripping.
+	for _, fp := range chain.Code {
+		content, readErr := os.ReadFile(fp)
+		if readErr != nil {
+			return toolError(fmt.Sprintf("error reading file %s: %v", fp, readErr)), nil, nil
 		}
+		writeCodeSection(&buf, delimID, fp, string(content))
 	}
 
-	// Step 6: Return the chain content as a success result.
+	// Step 7: Return the chain content as a success result.
 	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: builder.String()}},
+		Content: []mcp.Content{&mcp.TextContent{Text: buf.String()}},
 	}, nil, nil
 }
 
-// isValidTargetPrefix checks that the logical name is a ROOT or TEST
-// node (either exactly "ROOT"/"TEST" or prefixed with "ROOT/"/"TEST/").
+// isValidTargetPrefix checks that the logical name starts with ROOT/ or TEST/,
+// or equals ROOT or TEST exactly.
 func isValidTargetPrefix(name string) bool {
-	if name == "ROOT" || name == "TEST" {
-		return true
+	return name == "ROOT" || name == "TEST" ||
+		strings.HasPrefix(name, "ROOT/") || strings.HasPrefix(name, "TEST/")
+}
+
+// stripFrontmatter removes the YAML frontmatter block (between the first and
+// second "---" lines) from a file's content. If no frontmatter is found, the
+// content is returned unchanged.
+func stripFrontmatter(content string) string {
+	lines := strings.SplitAfter(content, "\n")
+	// Find first "---" line.
+	i := 0
+	for i < len(lines) {
+		if strings.TrimSpace(lines[i]) == "---" {
+			break
+		}
+		i++
 	}
-	if strings.HasPrefix(name, "ROOT/") || strings.HasPrefix(name, "TEST/") {
-		return true
+	if i >= len(lines) {
+		// No opening delimiter found — return as-is.
+		return content
 	}
-	return false
+	// Find second "---" line.
+	j := i + 1
+	for j < len(lines) {
+		if strings.TrimSpace(lines[j]) == "---" {
+			break
+		}
+		j++
+	}
+	if j >= len(lines) {
+		// No closing delimiter found — return as-is.
+		return content
+	}
+	// Return everything after the closing "---" line.
+	// Preserve any content before the opening "---" as well.
+	before := strings.Join(lines[:i], "")
+	after := strings.Join(lines[j+1:], "")
+	return before + after
+}
+
+// writeSection writes a spec/dependency file section with both node: and path: headers.
+func writeSection(buf *strings.Builder, delimID, logicalName, filePath, content string) {
+	fmt.Fprintf(buf, "<<<FILE_%s>>>\n", delimID)
+	fmt.Fprintf(buf, "node: %s\n", logicalName)
+	fmt.Fprintf(buf, "path: %s\n", filePath)
+	fmt.Fprintf(buf, "\n%s\n", content)
+	fmt.Fprintf(buf, "<<<END_FILE_%s>>>\n", delimID)
+}
+
+// writeCodeSection writes a code file section with only a path: header (no node:).
+func writeCodeSection(buf *strings.Builder, delimID, filePath, content string) {
+	fmt.Fprintf(buf, "<<<FILE_%s>>>\n", delimID)
+	fmt.Fprintf(buf, "path: %s\n", filePath)
+	fmt.Fprintf(buf, "\n%s\n", content)
+	fmt.Fprintf(buf, "<<<END_FILE_%s>>>\n", delimID)
 }
 
 // toolError creates an MCP tool error result with the given message.
