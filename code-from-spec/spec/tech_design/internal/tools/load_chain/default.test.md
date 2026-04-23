@@ -1,6 +1,6 @@
 ---
-version: 6
-parent_version: 39
+version: 7
+parent_version: 44
 implements:
   - internal/load_chain/load_chain_test.go
 ---
@@ -84,6 +84,25 @@ and a data file. Call `handleLoadChain` with
 Expect: success result. The file section for
 `_external.md` does not contain the YAML frontmatter. The
 target node's frontmatter is preserved.
+
+### Existing code files included in output
+
+Create a spec tree: `ROOT` and `ROOT/a` (leaf with
+`implements: ["src/a.go"]`). Create `src/a.go` with known
+content. Call `handleLoadChain` with `LogicalName: "ROOT/a"`.
+
+Expect: success result. Chain content contains a file section
+for `src/a.go` with `path:` header and no `node:` header.
+The file content matches what was written to disk.
+
+### Non-existing code files omitted from output
+
+Create a spec tree: `ROOT` and `ROOT/a` (leaf with
+`implements: ["src/a.go"]`). Do not create `src/a.go`.
+Call `handleLoadChain` with `LogicalName: "ROOT/a"`.
+
+Expect: success result. Chain content does not contain a
+file section for `src/a.go`.
 
 ## Failure Cases
 

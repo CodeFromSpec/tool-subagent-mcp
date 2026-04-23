@@ -1,6 +1,6 @@
 ---
-version: 13
-parent_version: 55
+version: 14
+parent_version: 56
 implements:
   - internal/chainresolver/chainresolver_test.go
 ---
@@ -28,6 +28,7 @@ Expect:
 - `Ancestors`: `ROOT`, `ROOT/a` (sorted alphabetically)
 - `Target`: `ROOT/a/b`
 - `Dependencies`: empty
+- `Code`: empty
 
 ### Leaf node — with ROOT/ dependency
 
@@ -103,6 +104,38 @@ Input: `"ROOT/a"`
 
 Expect:
 - `Dependencies` sorted: `ROOT/b`, `ROOT/m`, `ROOT/z`
+
+### Leaf node — implements file exists on disk
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with
+`implements: ["src/a.go"]`). Create the file `src/a.go` on
+disk.
+
+Input: `"ROOT/a"`
+
+Expect:
+- `Code`: `["src/a.go"]`
+
+### Leaf node — implements file does not exist
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with
+`implements: ["src/a.go"]`). Do not create `src/a.go`.
+
+Input: `"ROOT/a"`
+
+Expect:
+- `Code`: empty
+
+### Leaf node — some implements files exist, some do not
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with
+`implements: ["src/a.go", "src/b.go"]`). Create only
+`src/a.go` on disk.
+
+Input: `"ROOT/a"`
+
+Expect:
+- `Code`: `["src/a.go"]`
 
 ## Edge Cases
 

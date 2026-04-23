@@ -1,5 +1,5 @@
 ---
-version: 55
+version: 56
 parent_version: 11
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -39,6 +39,7 @@ type Chain struct {
     Ancestors    []ChainItem
     Target       ChainItem
     Dependencies []ChainItem
+    Code         []string
 }
 
 func ResolveChain(targetLogicalName string) (*Chain, error)
@@ -92,7 +93,16 @@ For each entry in `DependsOn` whose `LogicalName` starts with
 
 Sort `Dependencies` by logical name alphabetically.
 
-**Step 3 — Deduplicate file paths**
+**Step 3 — Code**
+
+Read the target node's frontmatter using `ParseFrontmatter`
+and extract the `Implements` list. For each path in
+`Implements`, check if the file exists on disk (using
+`os.Stat`). If it exists, add the path to `Code`. If it does
+not exist, skip it. `Code` contains only files that already
+exist.
+
+**Step 4 — Deduplicate file paths**
 
 Review the `Ancestors` and `Dependencies` lists and remove
 duplicate file paths. Each file path must appear only once

@@ -1,5 +1,5 @@
 ---
-version: 39
+version: 44
 parent_version: 3
 depends_on:
   - path: EXTERNAL/google-uuid
@@ -7,7 +7,7 @@ depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 1
   - path: ROOT/tech_design/internal/chain_resolver
-    version: 55
+    version: 56
   - path: ROOT/tech_design/internal/frontmatter
     version: 27
   - path: ROOT/tech_design/internal/logical_names
@@ -80,8 +80,10 @@ Opening delimiter: `<<<FILE_<uuid>>>`
 Closing delimiter: `<<<END_FILE_<uuid>>>`
 
 The same UUID is used for all files in the chain. Each section
-includes `node:` and `path:` headers between the opening
-delimiter and the file content, separated by a blank line.
+includes `path:` and optionally `node:` headers between the
+opening delimiter and the file content, separated by a blank
+line. Spec and dependency files include both `node:` and
+`path:`; code files include only `path:`.
 
 ```
 <<<FILE_550e8400-e29b-41d4-a716-446655440000>>>
@@ -104,6 +106,12 @@ path: code-from-spec/external/database/schema.sql
 
 <content of schema.sql>
 <<<END_FILE_550e8400-e29b-41d4-a716-446655440000>>>
+
+<<<FILE_550e8400-e29b-41d4-a716-446655440000>>>
+path: internal/payments/fees/calculation.go
+
+<existing source file content>
+<<<END_FILE_550e8400-e29b-41d4-a716-446655440000>>>
 ```
 
 ### Algorithm
@@ -123,11 +131,11 @@ path: code-from-spec/external/database/schema.sql
       directory. If any fails, return a tool error.
 5. Generate a UUID using `github.com/google/uuid`.
 6. Call `ResolveChain` to resolve the full chain and read every
-   file in the chain into memory. For every file except the
-   target node, strip the YAML frontmatter before including the
-   content. Build the concatenated chain content using the UUID
-   and the chain output format. If any step fails, return a tool
-   error.
+   file in the chain into memory. For ancestors and dependencies, strip the YAML frontmatter
+   before including the content. Build
+   the concatenated chain content using the UUID and the chain
+   output format, appending the code files after the
+   dependencies. If any step fails, return a tool error.
 7. Return the chain content as a success result.
 
 ## Constraints
