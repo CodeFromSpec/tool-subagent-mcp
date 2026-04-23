@@ -1,5 +1,5 @@
 ---
-version: 56
+version: 57
 parent_version: 11
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -102,7 +102,13 @@ and extract the `Implements` list. For each path in
 not exist, skip it. `Code` contains only files that already
 exist.
 
-**Step 4 — Deduplicate file paths**
+**Step 4 — Normalize file paths**
+
+Convert all file paths in `Ancestors`, `Target`,
+`Dependencies`, and `Code` to use forward slashes as
+separators, regardless of the operating system.
+
+**Step 5 — Deduplicate file paths**
 
 Review the `Ancestors` and `Dependencies` lists and remove
 duplicate file paths. Each file path must appear only once

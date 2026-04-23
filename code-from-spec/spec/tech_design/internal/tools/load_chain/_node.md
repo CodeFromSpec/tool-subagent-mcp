@@ -1,5 +1,5 @@
 ---
-version: 44
+version: 45
 parent_version: 3
 depends_on:
   - path: EXTERNAL/google-uuid
@@ -131,7 +131,7 @@ path: internal/payments/fees/calculation.go
       directory. If any fails, return a tool error.
 5. Generate a UUID using `github.com/google/uuid`.
 6. Call `ResolveChain` to resolve the full chain and read every
-   file in the chain into memory. For ancestors and dependencies, strip the YAML frontmatter
+   file in the chain into memory. For ancestors and dependencies only, strip the YAML frontmatter
    before including the content. Build
    the concatenated chain content using the UUID and the chain
    output format, appending the code files after the
