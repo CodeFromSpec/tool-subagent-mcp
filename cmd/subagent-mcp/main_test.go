@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/server@v14
+// spec: TEST/tech_design/server@v17
 
 package main_test
 
@@ -14,26 +14,22 @@ import (
 // binaryPath holds the path to the compiled binary, built once in TestMain.
 var binaryPath string
 
-// usageSnippet is a substring of the usage message used to verify
-// that the binary printed the expected output.
-const usageSnippet = "Usage: subagent-mcp"
-
-// TestMain builds the binary into a temp directory so all tests
-// can invoke it as a subprocess. On Windows the binary needs
-// the .exe extension.
+// TestMain builds the binary into a temp directory before running tests.
+// On Windows, the binary name includes the .exe extension.
 func TestMain(m *testing.M) {
-	tmp, err := os.MkdirTemp("", "subagent-mcp-test-*")
+	// Create a temp directory for the test binary.
+	tmpDir, err := os.MkdirTemp("", "subagent-mcp-test-*")
 	if err != nil {
 		panic("failed to create temp dir: " + err.Error())
 	}
-	defer os.RemoveAll(tmp)
+	defer os.RemoveAll(tmpDir)
 
-	// Determine binary name, appending .exe on Windows.
-	name := "subagent-mcp"
+	// Determine binary name with platform-appropriate extension.
+	binaryName := "subagent-mcp"
 	if runtime.GOOS == "windows" {
-		name += ".exe"
+		binaryName += ".exe"
 	}
-	binaryPath = filepath.Join(tmp, name)
+	binaryPath = filepath.Join(tmpDir, binaryName)
 
 	// Build the binary from the current package directory.
 	cmd := exec.Command("go", "build", "-o", binaryPath, ".")
@@ -45,97 +41,101 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// usageSnippet is a substring of the usage message that we check for
+// in stdout or stderr to confirm the usage message was printed.
+const usageSnippet = "Usage: subagent-mcp"
+
 // --- Happy Path ---
 
 // TestHelpFlag verifies that --help prints usage to stdout and exits 0.
 func TestHelpFlag(t *testing.T) {
 	cmd := exec.Command(binaryPath, "--help")
-	out, err := cmd.Output()
+	stdout, err := cmd.Output()
+
+	// --help should exit 0, so err should be nil.
 	if err != nil {
-		t.Fatalf("expected exit 0, got error: %v", err)
+		t.Fatalf("expected exit 0 for --help, got error: %v", err)
 	}
-	if !strings.Contains(string(out), usageSnippet) {
-		t.Errorf("stdout does not contain usage message.\ngot: %s", string(out))
+
+	if !strings.Contains(string(stdout), usageSnippet) {
+		t.Errorf("stdout does not contain usage message.\nstdout: %s", stdout)
 	}
 }
 
 // TestHelpWord verifies that "help" prints usage to stdout and exits 0.
 func TestHelpWord(t *testing.T) {
 	cmd := exec.Command(binaryPath, "help")
-	out, err := cmd.Output()
+	stdout, err := cmd.Output()
+
+	// "help" should exit 0, so err should be nil.
 	if err != nil {
-		t.Fatalf("expected exit 0, got error: %v", err)
+		t.Fatalf("expected exit 0 for help, got error: %v", err)
 	}
-	if !strings.Contains(string(out), usageSnippet) {
-		t.Errorf("stdout does not contain usage message.\ngot: %s", string(out))
+
+	if !strings.Contains(string(stdout), usageSnippet) {
+		t.Errorf("stdout does not contain usage message.\nstdout: %s", stdout)
 	}
 }
 
 // TestShortHelpFlag verifies that -h prints usage to stdout and exits 0.
 func TestShortHelpFlag(t *testing.T) {
 	cmd := exec.Command(binaryPath, "-h")
-	out, err := cmd.Output()
+	stdout, err := cmd.Output()
+
+	// -h should exit 0, so err should be nil.
 	if err != nil {
-		t.Fatalf("expected exit 0, got error: %v", err)
+		t.Fatalf("expected exit 0 for -h, got error: %v", err)
 	}
-	if !strings.Contains(string(out), usageSnippet) {
-		t.Errorf("stdout does not contain usage message.\ngot: %s", string(out))
+
+	if !strings.Contains(string(stdout), usageSnippet) {
+		t.Errorf("stdout does not contain usage message.\nstdout: %s", stdout)
 	}
 }
 
 // --- Failure Cases ---
 
-// TestUnrecognizedArgument verifies that an unknown argument prints
-// usage to stderr and exits 1.
+// TestUnrecognizedArgument verifies that an unrecognized argument
+// prints usage to stderr and exits 1.
 func TestUnrecognizedArgument(t *testing.T) {
 	cmd := exec.Command(binaryPath, "something")
-	// CombinedOutput is not used — we need to check stderr specifically.
-	var stderrBuf strings.Builder
-	cmd.Stderr = &stderrBuf
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 
 	err := cmd.Run()
-	if err == nil {
-		t.Fatal("expected exit 1, got exit 0")
-	}
 
-	// Verify exit code is 1.
+	// Expect a non-zero exit code.
 	exitErr, ok := err.(*exec.ExitError)
 	if !ok {
-		t.Fatalf("expected *exec.ExitError, got %T: %v", err, err)
+		t.Fatalf("expected ExitError, got: %v", err)
 	}
 	if exitErr.ExitCode() != 1 {
 		t.Errorf("expected exit code 1, got %d", exitErr.ExitCode())
 	}
 
-	// Verify stderr contains the usage message.
-	if !strings.Contains(stderrBuf.String(), usageSnippet) {
-		t.Errorf("stderr does not contain usage message.\ngot: %s", stderrBuf.String())
+	if !strings.Contains(stderr.String(), usageSnippet) {
+		t.Errorf("stderr does not contain usage message.\nstderr: %s", stderr.String())
 	}
 }
 
-// TestMultipleArguments verifies that multiple arguments print
-// usage to stderr and exit 1.
+// TestMultipleArguments verifies that multiple arguments print usage
+// to stderr and exit 1.
 func TestMultipleArguments(t *testing.T) {
 	cmd := exec.Command(binaryPath, "foo", "bar")
-	var stderrBuf strings.Builder
-	cmd.Stderr = &stderrBuf
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 
 	err := cmd.Run()
-	if err == nil {
-		t.Fatal("expected exit 1, got exit 0")
-	}
 
-	// Verify exit code is 1.
+	// Expect a non-zero exit code.
 	exitErr, ok := err.(*exec.ExitError)
 	if !ok {
-		t.Fatalf("expected *exec.ExitError, got %T: %v", err, err)
+		t.Fatalf("expected ExitError, got: %v", err)
 	}
 	if exitErr.ExitCode() != 1 {
 		t.Errorf("expected exit code 1, got %d", exitErr.ExitCode())
 	}
 
-	// Verify stderr contains the usage message.
-	if !strings.Contains(stderrBuf.String(), usageSnippet) {
-		t.Errorf("stderr does not contain usage message.\ngot: %s", stderrBuf.String())
+	if !strings.Contains(stderr.String(), usageSnippet) {
+		t.Errorf("stderr does not contain usage message.\nstderr: %s", stderr.String())
 	}
 }
