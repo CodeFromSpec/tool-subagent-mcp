@@ -1,5 +1,5 @@
 ---
-version: 57
+version: 62
 parent_version: 11
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -77,8 +77,9 @@ For each entry in `DependsOn` whose `LogicalName` starts with
 1. Call `PathFromLogicalName` to get the file path.
 2. Verify the file exists on disk (using `os.Stat`). If it does
    not exist, return error: `"cannot resolve logical name: <name>"`.
-3. Add a `ChainItem` with a single-element `FilePaths` list to
-   `Dependencies`.
+3. If a `ChainItem` with the same logical name already exists
+   in `Dependencies`, skip it. Otherwise, add a `ChainItem`
+   with a single-element `FilePaths` list to `Dependencies`.
 
 For each entry in `DependsOn` whose `LogicalName` starts with
 `EXTERNAL/`:
@@ -88,8 +89,10 @@ For each entry in `DependsOn` whose `LogicalName` starts with
    any pattern. If no `Filter` is present, include all files in
    the dependency folder and any subfolders. File paths are sorted
    and relative to project root.
-3. Add a `ChainItem` with the collected `FilePaths` list to
-   `Dependencies`.
+3. If a `ChainItem` with the same logical name already exists
+   in `Dependencies`, merge the collected file paths into the
+   existing item. Otherwise, add a new `ChainItem` with the
+   collected `FilePaths` list to `Dependencies`.
 
 Sort `Dependencies` by logical name alphabetically.
 
@@ -106,14 +109,18 @@ exist.
 
 Convert all file paths in `Ancestors`, `Target`,
 `Dependencies`, and `Code` to use forward slashes as
-separators, regardless of the operating system.
+separators, regardless of the operating system. Use
+`filepath.ToSlash`.
 
 **Step 5 — Deduplicate file paths**
 
 Review the `Ancestors` and `Dependencies` lists and remove
 duplicate file paths. Each file path must appear only once
-across the chain. When a path appears more than once, keep the
-first occurrence and discard subsequent ones.
+across the entire chain — including across `Ancestors` and
+`Dependencies`. When a path appears more than once, keep the
+first occurrence and discard subsequent ones. This step is
+necessary because a file path may appear in both an ancestor
+and a dependency.
 
 ### Error handling
 
