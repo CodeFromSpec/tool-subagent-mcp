@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/CodeFromSpec/tool-subagent-mcp/compare/v1.1.0...v1.2.0) (2026-04-23)
+
+
+### Features
+
+* deduplicate chain files, strip frontmatter, include existing source code ([#9](https://github.com/CodeFromSpec/tool-subagent-mcp/issues/9)) ([92a518d](https://github.com/CodeFromSpec/tool-subagent-mcp/commit/92a518d30495651c2ba6b0d52608c71e6ec45c2b))
+* remove modes, rename load_context to load_chain, reorganize specs ([#7](https://github.com/CodeFromSpec/tool-subagent-mcp/issues/7)) ([3eb1eaa](https://github.com/CodeFromSpec/tool-subagent-mcp/commit/3eb1eaa761e9b0d88cdf7c212df32c5af8b6dd06))
+
 ## [1.1.0](https://github.com/CodeFromSpec/tool-subagent-mcp/compare/v1.0.1...v1.1.0) (2026-04-22)
 
 
