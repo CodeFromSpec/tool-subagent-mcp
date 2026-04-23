@@ -1,11 +1,10 @@
-// spec: TEST/tech_design/server@v17
+// spec: TEST/tech_design/server@v19
 
-package main_test
+package main
 
 import (
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -14,36 +13,37 @@ import (
 // binaryPath holds the path to the compiled binary, built once in TestMain.
 var binaryPath string
 
-// TestMain builds the binary into a temp directory before running tests.
-// On Windows, the binary name includes the .exe extension.
+// usageSnippet is a substring expected to appear in the usage message output.
+// Taken from the usage message defined in ROOT/tech_design/server.
+const usageSnippet = "Usage: subagent-mcp"
+
+// TestMain builds the binary once into a temp directory. All tests in this
+// file invoke the compiled binary as a subprocess.
 func TestMain(m *testing.M) {
-	// Create a temp directory for the test binary.
+	// Create a temp directory for the built binary.
 	tmpDir, err := os.MkdirTemp("", "subagent-mcp-test-*")
 	if err != nil {
 		panic("failed to create temp dir: " + err.Error())
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Determine binary name with platform-appropriate extension.
-	binaryName := "subagent-mcp"
+	// Determine the binary output path. On Windows, the binary must have
+	// the .exe extension.
+	binaryPath = tmpDir + "/subagent-mcp"
 	if runtime.GOOS == "windows" {
-		binaryName += ".exe"
+		binaryPath += ".exe"
 	}
-	binaryPath = filepath.Join(tmpDir, binaryName)
 
-	// Build the binary from the current package directory.
+	// Build the binary.
 	cmd := exec.Command("go", "build", "-o", binaryPath, ".")
 	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
 	if err := cmd.Run(); err != nil {
 		panic("failed to build binary: " + err.Error())
 	}
 
 	os.Exit(m.Run())
 }
-
-// usageSnippet is a substring of the usage message that we check for
-// in stdout or stderr to confirm the usage message was printed.
-const usageSnippet = "Usage: subagent-mcp"
 
 // --- Happy Path ---
 
@@ -58,11 +58,12 @@ func TestHelpFlag(t *testing.T) {
 	}
 
 	if !strings.Contains(string(stdout), usageSnippet) {
-		t.Errorf("stdout does not contain usage message.\nstdout: %s", stdout)
+		t.Errorf("stdout does not contain usage message.\nstdout: %s", string(stdout))
 	}
 }
 
-// TestHelpWord verifies that "help" prints usage to stdout and exits 0.
+// TestHelpWord verifies that the bare word "help" prints usage to stdout
+// and exits 0.
 func TestHelpWord(t *testing.T) {
 	cmd := exec.Command(binaryPath, "help")
 	stdout, err := cmd.Output()
@@ -73,7 +74,7 @@ func TestHelpWord(t *testing.T) {
 	}
 
 	if !strings.Contains(string(stdout), usageSnippet) {
-		t.Errorf("stdout does not contain usage message.\nstdout: %s", stdout)
+		t.Errorf("stdout does not contain usage message.\nstdout: %s", string(stdout))
 	}
 }
 
@@ -88,54 +89,70 @@ func TestShortHelpFlag(t *testing.T) {
 	}
 
 	if !strings.Contains(string(stdout), usageSnippet) {
-		t.Errorf("stdout does not contain usage message.\nstdout: %s", stdout)
+		t.Errorf("stdout does not contain usage message.\nstdout: %s", string(stdout))
 	}
 }
 
 // --- Failure Cases ---
 
-// TestUnrecognizedArgument verifies that an unrecognized argument
-// prints usage to stderr and exits 1.
+// TestUnrecognizedArgument verifies that an unrecognized argument prints
+// usage to stderr and exits 1.
 func TestUnrecognizedArgument(t *testing.T) {
 	cmd := exec.Command(binaryPath, "something")
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
+	// Output() captures stdout and returns an error if exit code != 0.
+	// We need stderr, so use CombinedOutput or capture separately.
+	var stderrBuf strings.Builder
+	cmd.Stderr = &stderrBuf
 
 	err := cmd.Run()
 
 	// Expect a non-zero exit code.
+	if err == nil {
+		t.Fatal("expected non-zero exit code for unrecognized argument, got exit 0")
+	}
+
+	// Verify exit code is 1.
 	exitErr, ok := err.(*exec.ExitError)
 	if !ok {
-		t.Fatalf("expected ExitError, got: %v", err)
+		t.Fatalf("expected *exec.ExitError, got %T: %v", err, err)
 	}
 	if exitErr.ExitCode() != 1 {
 		t.Errorf("expected exit code 1, got %d", exitErr.ExitCode())
 	}
 
-	if !strings.Contains(stderr.String(), usageSnippet) {
-		t.Errorf("stderr does not contain usage message.\nstderr: %s", stderr.String())
+	// Verify stderr contains the usage message.
+	stderr := stderrBuf.String()
+	if !strings.Contains(stderr, usageSnippet) {
+		t.Errorf("stderr does not contain usage message.\nstderr: %s", stderr)
 	}
 }
 
-// TestMultipleArguments verifies that multiple arguments print usage
-// to stderr and exit 1.
+// TestMultipleArguments verifies that multiple arguments print usage to
+// stderr and exit 1.
 func TestMultipleArguments(t *testing.T) {
 	cmd := exec.Command(binaryPath, "foo", "bar")
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
+	var stderrBuf strings.Builder
+	cmd.Stderr = &stderrBuf
 
 	err := cmd.Run()
 
 	// Expect a non-zero exit code.
+	if err == nil {
+		t.Fatal("expected non-zero exit code for multiple arguments, got exit 0")
+	}
+
+	// Verify exit code is 1.
 	exitErr, ok := err.(*exec.ExitError)
 	if !ok {
-		t.Fatalf("expected ExitError, got: %v", err)
+		t.Fatalf("expected *exec.ExitError, got %T: %v", err, err)
 	}
 	if exitErr.ExitCode() != 1 {
 		t.Errorf("expected exit code 1, got %d", exitErr.ExitCode())
 	}
 
-	if !strings.Contains(stderr.String(), usageSnippet) {
-		t.Errorf("stderr does not contain usage message.\nstderr: %s", stderr.String())
+	// Verify stderr contains the usage message.
+	stderr := stderrBuf.String()
+	if !strings.Contains(stderr, usageSnippet) {
+		t.Errorf("stderr does not contain usage message.\nstderr: %s", stderr)
 	}
 }

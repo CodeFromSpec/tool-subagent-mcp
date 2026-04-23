@@ -1,10 +1,11 @@
-// spec: ROOT/tech_design/internal/chain_resolver@v62
+// spec: ROOT/tech_design/internal/chain_resolver@v65
 
 package chainresolver
 
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -13,16 +14,16 @@ import (
 	"github.com/CodeFromSpec/tool-subagent-mcp/internal/logicalnames"
 )
 
-// ChainItem represents a single node in the chain with its logical name
-// and the file paths that contribute its content.
+// ChainItem represents a single node in the chain, identified by its
+// logical name and the file paths that contain its content.
 type ChainItem struct {
 	LogicalName string
 	FilePaths   []string
 }
 
-// Chain holds the fully resolved chain for a target node, separated into
-// ancestors (root to parent), the target itself, its dependencies, and
-// any existing generated source files.
+// Chain holds the fully resolved chain for a target node, separated
+// into ancestors, the target itself, dependencies, and existing
+// generated code files.
 type Chain struct {
 	Ancestors    []ChainItem
 	Target       ChainItem
@@ -32,16 +33,16 @@ type Chain struct {
 
 // ResolveChain builds the complete chain for the given target logical name.
 // It returns the chain separated into ancestors, target, dependencies, and
-// existing code files. Ancestors and Dependencies are sorted alphabetically
-// by logical name.
+// code. Ancestors and Dependencies are sorted alphabetically by logical name.
 func ResolveChain(targetLogicalName string) (*Chain, error) {
+	var chain Chain
+
 	// ---------------------------------------------------------------
 	// Step 1 — Ancestors and Target
 	// ---------------------------------------------------------------
-	// Walk upward from the target, collecting all logical names in the
-	// ancestry path (including the target itself).
-	allNames := []string{targetLogicalName}
-
+	// Walk upward from the target, collecting every logical name
+	// (including the target itself) into a flat list.
+	collected := []string{targetLogicalName}
 	current := targetLogicalName
 	for {
 		hasParent, ok := logicalnames.HasParent(current)
@@ -55,52 +56,54 @@ func ResolveChain(targetLogicalName string) (*Chain, error) {
 		if !ok {
 			return nil, fmt.Errorf("cannot resolve logical name: %s", current)
 		}
-		allNames = append(allNames, parent)
+		collected = append(collected, parent)
 		current = parent
 	}
 
-	// Sort alphabetically — the target will be the last item because
-	// it is the most deeply nested (longest) name.
-	sort.Strings(allNames)
+	// Sort alphabetically. The last item after sorting is the Target
+	// (because the target is the most specific / deepest name).
+	sort.Strings(collected)
 
-	// Build ChainItems for each name in the sorted list.
-	allItems := make([]ChainItem, 0, len(allNames))
-	for _, name := range allNames {
+	// Build ChainItems for each collected logical name.
+	items := make([]ChainItem, 0, len(collected))
+	for _, name := range collected {
 		filePath, ok := logicalnames.PathFromLogicalName(name)
 		if !ok {
 			return nil, fmt.Errorf("cannot resolve logical name: %s", name)
 		}
-		allItems = append(allItems, ChainItem{
+		items = append(items, ChainItem{
 			LogicalName: name,
 			FilePaths:   []string{filePath},
 		})
 	}
 
-	// The last item is the target; the rest are ancestors.
-	chain := &Chain{
-		Target: allItems[len(allItems)-1],
-	}
-	if len(allItems) > 1 {
-		chain.Ancestors = allItems[:len(allItems)-1]
+	// Last item is the Target; the rest are Ancestors.
+	chain.Target = items[len(items)-1]
+	if len(items) > 1 {
+		chain.Ancestors = items[:len(items)-1]
 	}
 
 	// ---------------------------------------------------------------
 	// Step 2 — Dependencies
 	// ---------------------------------------------------------------
-	// Parse the target's frontmatter to get depends_on entries.
-	targetPath, _ := logicalnames.PathFromLogicalName(targetLogicalName)
-	targetFM, err := frontmatter.ParseFrontmatter(targetPath)
+	// Parse the target node's frontmatter to get DependsOn entries.
+	targetFilePath, ok := logicalnames.PathFromLogicalName(targetLogicalName)
+	if !ok {
+		return nil, fmt.Errorf("cannot resolve logical name: %s", targetLogicalName)
+	}
+
+	targetFM, err := frontmatter.ParseFrontmatter(targetFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing frontmatter: %w", err)
 	}
 
 	// Collect all DependsOn entries. If the target is a TEST/ node,
-	// also include the parent leaf node's depends_on.
+	// also include the parent leaf node's DependsOn.
 	allDeps := make([]frontmatter.DependsOn, 0, len(targetFM.DependsOn))
 	allDeps = append(allDeps, targetFM.DependsOn...)
 
 	if strings.HasPrefix(targetLogicalName, "TEST/") || targetLogicalName == "TEST" {
-		// The parent of a TEST node is a ROOT node (the leaf it tests).
+		// The parent of a TEST/ node is a ROOT/ leaf node.
 		parentName, ok := logicalnames.ParentLogicalName(targetLogicalName)
 		if !ok {
 			return nil, fmt.Errorf("cannot resolve logical name: %s", targetLogicalName)
@@ -116,109 +119,116 @@ func ResolveChain(targetLogicalName string) (*Chain, error) {
 		allDeps = append(allDeps, parentFM.DependsOn...)
 	}
 
-	// Process each dependency entry.
-	// Use a map to track existing dependency items by logical name for
-	// deduplication and merging.
-	depMap := make(map[string]*ChainItem)
-	var depOrder []string // Track insertion order for later sorting.
+	// Index for quick lookup of existing dependency items by logical name.
+	depIndex := make(map[string]int)
 
 	for _, dep := range allDeps {
 		if strings.HasPrefix(dep.LogicalName, "ROOT/") || dep.LogicalName == "ROOT" {
-			// ---- ROOT dependency ----
-			// Skip if we already have this logical name.
-			if _, exists := depMap[dep.LogicalName]; exists {
-				continue
-			}
-
-			filePath, ok := logicalnames.PathFromLogicalName(dep.LogicalName)
+			// ROOT/ dependency: single file path.
+			depFilePath, ok := logicalnames.PathFromLogicalName(dep.LogicalName)
 			if !ok {
 				return nil, fmt.Errorf("cannot resolve logical name: %s", dep.LogicalName)
 			}
-
-			// Verify the file exists on disk.
-			if _, err := os.Stat(filePath); err != nil {
+			// Verify file exists on disk.
+			if _, err := os.Stat(depFilePath); err != nil {
 				return nil, fmt.Errorf("cannot resolve logical name: %s", dep.LogicalName)
 			}
-
-			depMap[dep.LogicalName] = &ChainItem{
-				LogicalName: dep.LogicalName,
-				FilePaths:   []string{filePath},
+			// Skip if already present.
+			if _, exists := depIndex[dep.LogicalName]; exists {
+				continue
 			}
-			depOrder = append(depOrder, dep.LogicalName)
+			chain.Dependencies = append(chain.Dependencies, ChainItem{
+				LogicalName: dep.LogicalName,
+				FilePaths:   []string{depFilePath},
+			})
+			depIndex[dep.LogicalName] = len(chain.Dependencies) - 1
 
 		} else if strings.HasPrefix(dep.LogicalName, "EXTERNAL/") {
-			// ---- EXTERNAL dependency ----
-			externalMdPath, ok := logicalnames.PathFromLogicalName(dep.LogicalName)
+			// EXTERNAL/ dependency: walk the folder, optionally filtering.
+			externalPath, ok := logicalnames.PathFromLogicalName(dep.LogicalName)
 			if !ok {
 				return nil, fmt.Errorf("cannot resolve logical name: %s", dep.LogicalName)
 			}
 
 			// The dependency folder is the directory containing _external.md.
-			depFolder := filepath.Dir(externalMdPath)
+			depFolder := filepath.Dir(externalPath)
 
-			// Collect file paths: always include _external.md first.
+			// Collect files by walking the dependency folder recursively.
 			var filePaths []string
-			filePaths = append(filePaths, externalMdPath)
-
-			if len(dep.Filter) > 0 {
-				// Include _external.md plus files matching any filter pattern.
-				for _, pattern := range dep.Filter {
-					// Pattern is relative to the dependency folder.
-					fullPattern := filepath.Join(depFolder, pattern)
-					matches, err := filepath.Glob(fullPattern)
-					if err != nil {
-						return nil, fmt.Errorf("error evaluating filter %s for %s: %s", pattern, dep.LogicalName, err.Error())
-					}
-					for _, m := range matches {
-						filePaths = append(filePaths, m)
-					}
-				}
-			} else {
-				// No filter — include all files in the dependency folder
-				// and subfolders.
-				err := filepath.Walk(depFolder, func(path string, info os.FileInfo, err error) error {
-					if err != nil {
-						return err
-					}
-					if !info.IsDir() {
-						filePaths = append(filePaths, path)
-					}
-					return nil
-				})
+			err := filepath.WalkDir(depFolder, func(p string, d os.DirEntry, err error) error {
 				if err != nil {
-					return nil, fmt.Errorf("error evaluating filter * for %s: %s", dep.LogicalName, err.Error())
+					return err
 				}
+				// Skip directories — only collect files.
+				if d.IsDir() {
+					return nil
+				}
+				filePaths = append(filePaths, p)
+				return nil
+			})
+			if err != nil {
+				return nil, fmt.Errorf("cannot resolve logical name: %s", dep.LogicalName)
 			}
 
-			// Sort and deduplicate file paths within this dependency.
-			sort.Strings(filePaths)
-			filePaths = deduplicateStrings(filePaths)
+			// Apply filter if present.
+			if len(dep.Filter) > 0 {
+				var filtered []string
+				for _, fp := range filePaths {
+					// Get path relative to the dependency folder.
+					relPath, err := filepath.Rel(depFolder, fp)
+					if err != nil {
+						continue
+					}
+					// Use forward slashes for matching with path.Match.
+					relPath = filepath.ToSlash(relPath)
 
-			// Merge into existing item or create new one.
-			if existing, exists := depMap[dep.LogicalName]; exists {
-				existing.FilePaths = mergeAndSortPaths(existing.FilePaths, filePaths)
+					// Always include _external.md.
+					if relPath == "_external.md" {
+						filtered = append(filtered, fp)
+						continue
+					}
+
+					// Check against each filter pattern using path.Match.
+					for _, pattern := range dep.Filter {
+						matched, matchErr := path.Match(pattern, relPath)
+						if matchErr != nil {
+							return nil, fmt.Errorf("error evaluating filter %s for %s: %s", pattern, dep.LogicalName, matchErr.Error())
+						}
+						if matched {
+							filtered = append(filtered, fp)
+							break
+						}
+					}
+				}
+				filePaths = filtered
+			}
+
+			// Sort file paths.
+			sort.Strings(filePaths)
+
+			// If a ChainItem with the same logical name exists, merge paths.
+			if idx, exists := depIndex[dep.LogicalName]; exists {
+				chain.Dependencies[idx].FilePaths = append(chain.Dependencies[idx].FilePaths, filePaths...)
 			} else {
-				depMap[dep.LogicalName] = &ChainItem{
+				chain.Dependencies = append(chain.Dependencies, ChainItem{
 					LogicalName: dep.LogicalName,
 					FilePaths:   filePaths,
-				}
-				depOrder = append(depOrder, dep.LogicalName)
+				})
+				depIndex[dep.LogicalName] = len(chain.Dependencies) - 1
 			}
 		}
 	}
 
-	// Sort dependencies alphabetically by logical name.
-	sort.Strings(depOrder)
-	chain.Dependencies = make([]ChainItem, 0, len(depOrder))
-	for _, name := range depOrder {
-		chain.Dependencies = append(chain.Dependencies, *depMap[name])
-	}
+	// Sort Dependencies by logical name alphabetically.
+	sort.Slice(chain.Dependencies, func(i, j int) bool {
+		return chain.Dependencies[i].LogicalName < chain.Dependencies[j].LogicalName
+	})
 
 	// ---------------------------------------------------------------
 	// Step 3 — Code
 	// ---------------------------------------------------------------
-	// Extract implements list from the target's frontmatter and keep
-	// only files that exist on disk.
+	// Extract Implements from the target frontmatter and keep only
+	// files that exist on disk.
 	for _, implPath := range targetFM.Implements {
 		if _, err := os.Stat(implPath); err == nil {
 			chain.Code = append(chain.Code, implPath)
@@ -228,77 +238,54 @@ func ResolveChain(targetLogicalName string) (*Chain, error) {
 	// ---------------------------------------------------------------
 	// Step 4 — Normalize file paths
 	// ---------------------------------------------------------------
-	// Convert all paths to forward slashes regardless of OS.
+	// Convert all file paths to forward slashes.
+	normalizeItem := func(item *ChainItem) {
+		for i, fp := range item.FilePaths {
+			item.FilePaths[i] = filepath.ToSlash(fp)
+		}
+	}
+
 	for i := range chain.Ancestors {
-		for j := range chain.Ancestors[i].FilePaths {
-			chain.Ancestors[i].FilePaths[j] = filepath.ToSlash(chain.Ancestors[i].FilePaths[j])
-		}
+		normalizeItem(&chain.Ancestors[i])
 	}
-	for j := range chain.Target.FilePaths {
-		chain.Target.FilePaths[j] = filepath.ToSlash(chain.Target.FilePaths[j])
-	}
+	normalizeItem(&chain.Target)
 	for i := range chain.Dependencies {
-		for j := range chain.Dependencies[i].FilePaths {
-			chain.Dependencies[i].FilePaths[j] = filepath.ToSlash(chain.Dependencies[i].FilePaths[j])
-		}
+		normalizeItem(&chain.Dependencies[i])
 	}
-	for i := range chain.Code {
-		chain.Code[i] = filepath.ToSlash(chain.Code[i])
+	for i, fp := range chain.Code {
+		chain.Code[i] = filepath.ToSlash(fp)
 	}
 
 	// ---------------------------------------------------------------
-	// Step 5 — Deduplicate file paths across Ancestors and Dependencies
+	// Step 5 — Deduplicate file paths
 	// ---------------------------------------------------------------
-	// Each file path must appear only once across the entire chain.
-	// Keep the first occurrence and discard subsequent ones.
+	// Each file path must appear only once across Ancestors and
+	// Dependencies. Keep the first occurrence, discard subsequent ones.
 	seen := make(map[string]bool)
 
 	// Process Ancestors first (they come before Dependencies).
 	for i := range chain.Ancestors {
-		chain.Ancestors[i].FilePaths = filterSeen(chain.Ancestors[i].FilePaths, seen)
+		var deduped []string
+		for _, fp := range chain.Ancestors[i].FilePaths {
+			if !seen[fp] {
+				seen[fp] = true
+				deduped = append(deduped, fp)
+			}
+		}
+		chain.Ancestors[i].FilePaths = deduped
 	}
 
-	// Then Dependencies.
+	// Then process Dependencies.
 	for i := range chain.Dependencies {
-		chain.Dependencies[i].FilePaths = filterSeen(chain.Dependencies[i].FilePaths, seen)
-	}
-
-	return chain, nil
-}
-
-// filterSeen removes paths that have already been seen, updating the seen
-// map with paths that are kept. Returns the filtered slice.
-func filterSeen(paths []string, seen map[string]bool) []string {
-	result := make([]string, 0, len(paths))
-	for _, p := range paths {
-		if !seen[p] {
-			seen[p] = true
-			result = append(result, p)
+		var deduped []string
+		for _, fp := range chain.Dependencies[i].FilePaths {
+			if !seen[fp] {
+				seen[fp] = true
+				deduped = append(deduped, fp)
+			}
 		}
+		chain.Dependencies[i].FilePaths = deduped
 	}
-	return result
-}
 
-// deduplicateStrings removes consecutive duplicate strings from a sorted slice.
-func deduplicateStrings(s []string) []string {
-	if len(s) <= 1 {
-		return s
-	}
-	result := []string{s[0]}
-	for i := 1; i < len(s); i++ {
-		if s[i] != s[i-1] {
-			result = append(result, s[i])
-		}
-	}
-	return result
-}
-
-// mergeAndSortPaths merges two sorted path slices, sorts the result, and
-// removes duplicates.
-func mergeAndSortPaths(a, b []string) []string {
-	merged := make([]string, 0, len(a)+len(b))
-	merged = append(merged, a...)
-	merged = append(merged, b...)
-	sort.Strings(merged)
-	return deduplicateStrings(merged)
+	return &chain, nil
 }

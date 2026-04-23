@@ -8,7 +8,9 @@ files.
 ## Tools
 
 - **load_chain** — returns the complete spec chain for a given
-  logical name
+  logical name, with frontmatter stripped from ancestors and
+  dependencies, duplicate files removed, and existing source
+  files included
 - **write_file** — writes a generated file to disk, validated
   against the node's `implements` list
 
