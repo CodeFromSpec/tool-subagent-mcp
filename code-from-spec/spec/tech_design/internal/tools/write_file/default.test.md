@@ -1,5 +1,5 @@
 ---
-version: 4
+version: 5
 parent_version: 33
 implements:
   - internal/write_file/write_file_test.go
@@ -42,7 +42,10 @@ that path. Call the handler with new content.
 
 Expect: success. File content replaced.
 
-### Path with backslashes is normalized
+### Path with backslashes is normalized (Windows only)
+
+Skip this test on non-Windows platforms — backslash is a
+valid filename character on Linux/macOS, not a separator.
 
 Create a spec tree with `ROOT/a` having
 `implements: ["output/file.go"]`. Call the handler with
