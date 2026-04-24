@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/server@v40
+// spec: ROOT/tech_design/server@v41
 package main
 
 import (
@@ -64,9 +64,12 @@ func main() {
 
 	// Register load_chain — loads the spec chain for a given
 	// logical name and returns all relevant spec files concatenated.
+	// Meta advertises the maximum result size so clients (e.g.
+	// Claude) know the tool may return large responses.
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "load_chain",
 		Description: "Load the spec chain context for a given logical name. Returns all relevant spec files concatenated in a single response.",
+		Meta:        mcp.Meta{"anthropic/maxResultSizeChars": 500000},
 	}, load_chain.HandleLoadChain)
 
 	// Register write_file — writes a generated source file to disk,

@@ -1,9 +1,9 @@
 ---
-version: 40
+version: 41
 parent_version: 14
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
-    version: 1
+    version: 2
   - path: ROOT/tech_design/internal/tools
     version: 3
   - path: ROOT/tech_design/internal/tools/load_chain
@@ -41,7 +41,10 @@ the MCP server, registers tools, and runs the server.
    the `mcp.Tool` inline with the name and description from the
    corresponding tool definition spec, and pass the exported
    handler from the package:
-   - `load_chain.HandleLoadChain` with `LoadChainArgs`
+   - `load_chain.HandleLoadChain` with `LoadChainArgs`.
+     Set `Meta: mcp.Meta{"anthropic/maxResultSizeChars": 500000}`
+     on the tool so that `tools/list` advertises the maximum
+     result size to the client.
    - `write_file.HandleWriteFile` with `WriteFileArgs`
 5. Call `s.Run(context.Background(), &mcp.StdioTransport{})`.
 6. If `Run` returns an error, print it to stderr and exit 1.
