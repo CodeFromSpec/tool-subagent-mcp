@@ -1,8 +1,11 @@
-// spec: TEST/tech_design/server@v19
+// spec: TEST/tech_design/server@v20
 
 package main
 
 import (
+	"bufio"
+	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
@@ -155,4 +158,135 @@ func TestMultipleArguments(t *testing.T) {
 	if !strings.Contains(stderr, usageSnippet) {
 		t.Errorf("stderr does not contain usage message.\nstderr: %s", stderr)
 	}
+}
+
+// --- MCP Protocol ---
+
+// TestToolsListAdvertisesMaxResultSizeChars starts the binary as a subprocess,
+// sends an MCP initialize request followed by a tools/list request over stdin
+// (JSON-RPC 2.0, newline-delimited), and verifies that the load_chain tool
+// has _meta["anthropic/maxResultSizeChars"] equal to 500000.
+func TestToolsListAdvertisesMaxResultSizeChars(t *testing.T) {
+	// Start the binary as a subprocess with stdin/stdout pipes.
+	cmd := exec.Command(binaryPath)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatalf("failed to create stdin pipe: %v", err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("failed to create stdout pipe: %v", err)
+	}
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start binary: %v", err)
+	}
+
+	// Use a buffered reader to read newline-delimited JSON-RPC responses.
+	reader := bufio.NewReader(stdout)
+
+	// Step 1: Send the initialize request (JSON-RPC 2.0).
+	initializeReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","clientInfo":{"name":"test-client","version":"1.0.0"}}}` + "\n"
+	if _, err := io.WriteString(stdin, initializeReq); err != nil {
+		t.Fatalf("failed to write initialize request: %v", err)
+	}
+
+	// Read the initialize response.
+	initResp, err := reader.ReadBytes('\n')
+	if err != nil {
+		t.Fatalf("failed to read initialize response: %v", err)
+	}
+
+	// Verify that the initialize response is valid JSON-RPC with id 1.
+	var initResult map[string]interface{}
+	if err := json.Unmarshal(initResp, &initResult); err != nil {
+		t.Fatalf("failed to parse initialize response: %v\nraw: %s", err, string(initResp))
+	}
+	if initResult["error"] != nil {
+		t.Fatalf("initialize returned an error: %v", initResult["error"])
+	}
+
+	// Step 2: Send the initialized notification (no id — it's a notification).
+	initializedNotif := `{"jsonrpc":"2.0","method":"notifications/initialized"}` + "\n"
+	if _, err := io.WriteString(stdin, initializedNotif); err != nil {
+		t.Fatalf("failed to write initialized notification: %v", err)
+	}
+
+	// Step 3: Send the tools/list request.
+	toolsListReq := `{"jsonrpc":"2.0","id":2,"method":"tools/list"}` + "\n"
+	if _, err := io.WriteString(stdin, toolsListReq); err != nil {
+		t.Fatalf("failed to write tools/list request: %v", err)
+	}
+
+	// Read the tools/list response.
+	toolsResp, err := reader.ReadBytes('\n')
+	if err != nil {
+		t.Fatalf("failed to read tools/list response: %v", err)
+	}
+
+	// Parse the tools/list response.
+	var toolsResult map[string]interface{}
+	if err := json.Unmarshal(toolsResp, &toolsResult); err != nil {
+		t.Fatalf("failed to parse tools/list response: %v\nraw: %s", err, string(toolsResp))
+	}
+	if toolsResult["error"] != nil {
+		t.Fatalf("tools/list returned an error: %v", toolsResult["error"])
+	}
+
+	// Extract the result.tools array.
+	result, ok := toolsResult["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("tools/list response missing 'result' object.\nraw: %s", string(toolsResp))
+	}
+	tools, ok := result["tools"].([]interface{})
+	if !ok {
+		t.Fatalf("tools/list result missing 'tools' array.\nraw: %s", string(toolsResp))
+	}
+
+	// Find the load_chain tool and check its _meta field.
+	var found bool
+	for _, toolRaw := range tools {
+		tool, ok := toolRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		name, _ := tool["name"].(string)
+		if name != "load_chain" {
+			continue
+		}
+		found = true
+
+		// The _meta field is at the top level of the tool object.
+		meta, ok := tool["_meta"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("load_chain tool missing '_meta' field.\ntool: %v", tool)
+		}
+
+		// Check anthropic/maxResultSizeChars equals 500000.
+		maxSize, ok := meta["anthropic/maxResultSizeChars"]
+		if !ok {
+			t.Fatalf("load_chain _meta missing 'anthropic/maxResultSizeChars'.\n_meta: %v", meta)
+		}
+
+		// JSON numbers are parsed as float64 by default.
+		maxSizeFloat, ok := maxSize.(float64)
+		if !ok {
+			t.Fatalf("expected anthropic/maxResultSizeChars to be a number, got %T: %v", maxSize, maxSize)
+		}
+		if int(maxSizeFloat) != 500000 {
+			t.Errorf("expected anthropic/maxResultSizeChars = 500000, got %v", maxSize)
+		}
+		break
+	}
+
+	if !found {
+		t.Fatalf("load_chain tool not found in tools/list response.\ntools: %v", tools)
+	}
+
+	// Close stdin to signal the subprocess to shut down, then wait for it.
+	stdin.Close()
+	// Ignore the wait error — the process may exit with a non-zero code
+	// when stdin is closed, which is acceptable for this test.
+	_ = cmd.Wait()
 }

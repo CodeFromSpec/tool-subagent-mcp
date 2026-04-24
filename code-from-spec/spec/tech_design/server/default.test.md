@@ -1,5 +1,5 @@
 ---
-version: 19
+version: 20
 parent_version: 41
 implements:
   - cmd/subagent-mcp/main_test.go
@@ -51,3 +51,14 @@ Expect: exit 1, stderr contains the usage message.
 Run the binary with `foo bar`.
 
 Expect: exit 1, stderr contains the usage message.
+
+## MCP Protocol
+
+### tools/list advertises maxResultSizeChars for load_chain
+
+Start the binary as a subprocess. Send an MCP `initialize`
+request followed by a `tools/list` request over stdin (JSON-RPC).
+Parse the JSON-RPC response from stdout.
+
+Expect: the response contains a tool named `load_chain` with
+`_meta["anthropic/maxResultSizeChars"]` equal to `500000`.
