@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/CodeFromSpec/tool-subagent-mcp/compare/v1.2.0...v1.3.0) (2026-04-24)
+
+
+### Features
+
+* advertise maxResultSizeChars for load_chain in tools/list ([#10](https://github.com/CodeFromSpec/tool-subagent-mcp/issues/10)) ([9767e38](https://github.com/CodeFromSpec/tool-subagent-mcp/commit/9767e386cf2fe247ee74c900ef49e74dc2406be1))
+
 ## [1.2.0](https://github.com/CodeFromSpec/tool-subagent-mcp/compare/v1.1.0...v1.2.0) (2026-04-23)
 
 
