@@ -54,6 +54,19 @@ mcp.AddTool(server, &mcp.Tool{
 })
 ```
 
+## Tool metadata
+
+`mcp.Tool` embeds `mcp.Meta` (`map[string]any`), serialized as
+`_meta` in JSON. Set entries directly on the `Meta` field:
+
+```go
+mcp.AddTool(server, &mcp.Tool{
+    Name:        "my_tool",
+    Description: "...",
+    Meta:        mcp.Meta{"anthropic/maxResultSizeChars": 500000},
+}, handler)
+```
+
 ## Returning a success result
 
 ```go

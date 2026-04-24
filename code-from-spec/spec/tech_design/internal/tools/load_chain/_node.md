@@ -5,7 +5,7 @@ depends_on:
   - path: EXTERNAL/google-uuid
     version: 2
   - path: EXTERNAL/mcp-go-sdk
-    version: 1
+    version: 2
   - path: ROOT/tech_design/internal/chain_resolver
     version: 65
   - path: ROOT/tech_design/internal/frontmatter
