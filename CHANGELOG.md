@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.0.0](https://github.com/CodeFromSpec/tool-subagent-mcp/compare/v1.3.0...v2.0.0) (2026-04-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* v2 support and patch_file tool ([#14](https://github.com/CodeFromSpec/tool-subagent-mcp/issues/14))
+
+### Features
+
+* v2 support and patch_file tool ([#14](https://github.com/CodeFromSpec/tool-subagent-mcp/issues/14)) ([5137664](https://github.com/CodeFromSpec/tool-subagent-mcp/commit/51376644022f7b7baf191865e3129f06204a35a0))
+
+
+### Bug Fixes
+
+* added missing unit test  ([#12](https://github.com/CodeFromSpec/tool-subagent-mcp/issues/12)) ([c794845](https://github.com/CodeFromSpec/tool-subagent-mcp/commit/c7948456b34f98512155491db525729bb6cd20b5))
+
 ## [1.3.0](https://github.com/CodeFromSpec/tool-subagent-mcp/compare/v1.2.0...v1.3.0) (2026-04-24)
 
 
