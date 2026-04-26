@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/logical_names@v13
+// code-from-spec: TEST/tech_design/internal/logical_names@v15
 package logicalnames
 
 import "testing"
@@ -24,6 +24,28 @@ func TestPathFromLogicalName_ROOTWithPath(t *testing.T) {
 	}
 	if got != "code-from-spec/spec/payments/processor/_node.md" {
 		t.Fatalf("got %q, want %q", got, "code-from-spec/spec/payments/processor/_node.md")
+	}
+}
+
+// Qualifier is stripped before resolving — same path as without qualifier.
+func TestPathFromLogicalName_ROOTWithQualifier(t *testing.T) {
+	got, ok := PathFromLogicalName("ROOT/payments/processor(interface)")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if got != "code-from-spec/spec/payments/processor/_node.md" {
+		t.Fatalf("got %q, want %q", got, "code-from-spec/spec/payments/processor/_node.md")
+	}
+}
+
+// Verifies the qualifier is stripped (not included) in the path segment.
+func TestPathFromLogicalName_ROOTWithQualifierStripsQualifier(t *testing.T) {
+	got, ok := PathFromLogicalName("ROOT/x(y)")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if got != "code-from-spec/spec/x/_node.md" {
+		t.Fatalf("got %q, want %q", got, "code-from-spec/spec/x/_node.md")
 	}
 }
 
@@ -113,6 +135,17 @@ func TestHasParent_ROOT(t *testing.T) {
 
 func TestHasParent_ROOTWithPath(t *testing.T) {
 	hasParent, ok := HasParent("ROOT/domain/config")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if !hasParent {
+		t.Fatal("expected hasParent=true")
+	}
+}
+
+// ROOT/<path>(<qualifier>) also has a parent.
+func TestHasParent_ROOTWithQualifier(t *testing.T) {
+	hasParent, ok := HasParent("ROOT/domain/config(interface)")
 	if !ok {
 		t.Fatal("expected ok=true")
 	}
@@ -228,6 +261,17 @@ func TestParentLogicalName_ROOTxyz(t *testing.T) {
 	}
 }
 
+// Qualifier is stripped before deriving parent — ROOT/x/y(z) parent is ROOT/x.
+func TestParentLogicalName_ROOTxyQualifier(t *testing.T) {
+	got, ok := ParentLogicalName("ROOT/domain/config(interface)")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if got != "ROOT/domain" {
+		t.Fatalf("got %q, want %q", got, "ROOT/domain")
+	}
+}
+
 func TestParentLogicalName_TESTWithoutPath(t *testing.T) {
 	// TEST — parent is ROOT
 	got, ok := ParentLogicalName("TEST")
@@ -251,7 +295,7 @@ func TestParentLogicalName_TESTWithPath(t *testing.T) {
 }
 
 func TestParentLogicalName_TESTNamed(t *testing.T) {
-	// TEST/x(name) — parent is ROOT/x
+	// TEST/x(name) — parent is ROOT/x (qualifier stripped)
 	got, ok := ParentLogicalName("TEST/domain/config(edge_cases)")
 	if !ok {
 		t.Fatal("expected ok=true")
@@ -283,6 +327,164 @@ func TestParentLogicalName_EXTERNALHasNoParent(t *testing.T) {
 
 func TestParentLogicalName_InvalidInput(t *testing.T) {
 	got, ok := ParentLogicalName("")
+	if ok {
+		t.Fatal("expected ok=false")
+	}
+	if got != "" {
+		t.Fatalf("got %q, want %q", got, "")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// HasQualifier
+// ---------------------------------------------------------------------------
+
+func TestHasQualifier_ROOTWithoutQualifier(t *testing.T) {
+	hasQualifier, ok := HasQualifier("ROOT/x")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if hasQualifier {
+		t.Fatal("expected hasQualifier=false")
+	}
+}
+
+func TestHasQualifier_ROOTWithQualifier(t *testing.T) {
+	hasQualifier, ok := HasQualifier("ROOT/x(y)")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if !hasQualifier {
+		t.Fatal("expected hasQualifier=true")
+	}
+}
+
+func TestHasQualifier_ROOTNestedPathWithQualifier(t *testing.T) {
+	hasQualifier, ok := HasQualifier("ROOT/x/y/z(w)")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if !hasQualifier {
+		t.Fatal("expected hasQualifier=true")
+	}
+}
+
+func TestHasQualifier_ROOTAlone(t *testing.T) {
+	hasQualifier, ok := HasQualifier("ROOT")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if hasQualifier {
+		t.Fatal("expected hasQualifier=false")
+	}
+}
+
+func TestHasQualifier_TESTWithoutQualifier(t *testing.T) {
+	hasQualifier, ok := HasQualifier("TEST/x")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if hasQualifier {
+		t.Fatal("expected hasQualifier=false")
+	}
+}
+
+func TestHasQualifier_TESTWithQualifier(t *testing.T) {
+	hasQualifier, ok := HasQualifier("TEST/x(edge_cases)")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if !hasQualifier {
+		t.Fatal("expected hasQualifier=true")
+	}
+}
+
+func TestHasQualifier_EXTERNAL(t *testing.T) {
+	hasQualifier, ok := HasQualifier("EXTERNAL/x")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if hasQualifier {
+		t.Fatal("expected hasQualifier=false")
+	}
+}
+
+func TestHasQualifier_EmptyString(t *testing.T) {
+	hasQualifier, ok := HasQualifier("")
+	if ok {
+		t.Fatal("expected ok=false")
+	}
+	if hasQualifier {
+		t.Fatal("expected hasQualifier=false")
+	}
+}
+
+func TestHasQualifier_UnrecognizedPrefix(t *testing.T) {
+	hasQualifier, ok := HasQualifier("UNKNOWN/x(y)")
+	if ok {
+		t.Fatal("expected ok=false")
+	}
+	if hasQualifier {
+		t.Fatal("expected hasQualifier=false")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// QualifierName
+// ---------------------------------------------------------------------------
+
+func TestQualifierName_ROOTWithQualifier(t *testing.T) {
+	got, ok := QualifierName("ROOT/x(y)")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if got != "y" {
+		t.Fatalf("got %q, want %q", got, "y")
+	}
+}
+
+func TestQualifierName_ROOTNestedPathWithQualifier(t *testing.T) {
+	got, ok := QualifierName("ROOT/x/y(interface)")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if got != "interface" {
+		t.Fatalf("got %q, want %q", got, "interface")
+	}
+}
+
+func TestQualifierName_TESTWithQualifier(t *testing.T) {
+	got, ok := QualifierName("TEST/x(edge_cases)")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if got != "edge_cases" {
+		t.Fatalf("got %q, want %q", got, "edge_cases")
+	}
+}
+
+func TestQualifierName_ROOTWithoutQualifier(t *testing.T) {
+	got, ok := QualifierName("ROOT/x")
+	if ok {
+		t.Fatal("expected ok=false")
+	}
+	if got != "" {
+		t.Fatalf("got %q, want %q", got, "")
+	}
+}
+
+func TestQualifierName_ROOTAlone(t *testing.T) {
+	got, ok := QualifierName("ROOT")
+	if ok {
+		t.Fatal("expected ok=false")
+	}
+	if got != "" {
+		t.Fatalf("got %q, want %q", got, "")
+	}
+}
+
+func TestQualifierName_EmptyString(t *testing.T) {
+	got, ok := QualifierName("")
 	if ok {
 		t.Fatal("expected ok=false")
 	}

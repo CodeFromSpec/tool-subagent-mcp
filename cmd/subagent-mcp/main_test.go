@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/server@v20
+// code-from-spec: TEST/tech_design/server@v23
 
 package main
 
@@ -162,11 +162,15 @@ func TestMultipleArguments(t *testing.T) {
 
 // --- MCP Protocol ---
 
-// TestToolsListAdvertisesMaxResultSizeChars starts the binary as a subprocess,
-// sends an MCP initialize request followed by a tools/list request over stdin
-// (JSON-RPC 2.0, newline-delimited), and verifies that the load_chain tool
-// has _meta["anthropic/maxResultSizeChars"] equal to 500000.
-func TestToolsListAdvertisesMaxResultSizeChars(t *testing.T) {
+// testStartMCPSubprocess starts the binary as a subprocess with stdin/stdout
+// pipes, sends an initialize request and initialized notification, then
+// sends a tools/list request. Returns the parsed tools array and a cleanup
+// function that closes stdin and waits for the process.
+//
+// Callers must invoke the returned cleanup function when done.
+func testStartMCPSubprocess(t *testing.T) ([]interface{}, func()) {
+	t.Helper()
+
 	// Start the binary as a subprocess with stdin/stdout pipes.
 	cmd := exec.Command(binaryPath)
 	stdin, err := cmd.StdinPipe()
@@ -244,6 +248,25 @@ func TestToolsListAdvertisesMaxResultSizeChars(t *testing.T) {
 		t.Fatalf("tools/list result missing 'tools' array.\nraw: %s", string(toolsResp))
 	}
 
+	// Cleanup: close stdin to signal the subprocess to shut down, then wait.
+	cleanup := func() {
+		stdin.Close()
+		// Ignore the wait error — the process may exit with a non-zero code
+		// when stdin is closed, which is acceptable for these tests.
+		_ = cmd.Wait()
+	}
+
+	return tools, cleanup
+}
+
+// TestToolsListAdvertisesMaxResultSizeChars starts the binary as a subprocess,
+// sends an MCP initialize request followed by a tools/list request over stdin
+// (JSON-RPC 2.0, newline-delimited), and verifies that the load_chain tool
+// has _meta["anthropic/maxResultSizeChars"] equal to 500000.
+func TestToolsListAdvertisesMaxResultSizeChars(t *testing.T) {
+	tools, cleanup := testStartMCPSubprocess(t)
+	defer cleanup()
+
 	// Find the load_chain tool and check its _meta field.
 	var found bool
 	for _, toolRaw := range tools {
@@ -283,10 +306,35 @@ func TestToolsListAdvertisesMaxResultSizeChars(t *testing.T) {
 	if !found {
 		t.Fatalf("load_chain tool not found in tools/list response.\ntools: %v", tools)
 	}
+}
 
-	// Close stdin to signal the subprocess to shut down, then wait for it.
-	stdin.Close()
-	// Ignore the wait error — the process may exit with a non-zero code
-	// when stdin is closed, which is acceptable for this test.
-	_ = cmd.Wait()
+// TestToolsListAdvertisesAllThreeTools starts the binary as a subprocess,
+// sends an MCP initialize request followed by a tools/list request over stdin
+// (JSON-RPC 2.0, newline-delimited), and verifies that all three expected
+// tools — load_chain, write_file, and patch_file — are present in the
+// response.
+func TestToolsListAdvertisesAllThreeTools(t *testing.T) {
+	tools, cleanup := testStartMCPSubprocess(t)
+	defer cleanup()
+
+	// Build a set of advertised tool names for easy lookup.
+	advertised := make(map[string]bool)
+	for _, toolRaw := range tools {
+		tool, ok := toolRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		name, _ := tool["name"].(string)
+		if name != "" {
+			advertised[name] = true
+		}
+	}
+
+	// Verify each required tool is present.
+	required := []string{"load_chain", "write_file", "patch_file"}
+	for _, name := range required {
+		if !advertised[name] {
+			t.Errorf("expected tool %q not found in tools/list response.\nadvertised: %v", name, advertised)
+		}
+	}
 }

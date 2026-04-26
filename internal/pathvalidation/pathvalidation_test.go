@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/pathvalidation@v9
+// code-from-spec: TEST/tech_design/internal/pathvalidation@v10
 package pathvalidation
 
 import (
