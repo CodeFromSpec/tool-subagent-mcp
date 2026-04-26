@@ -1,6 +1,6 @@
 ---
-version: 19
-parent_version: 69
+version: 20
+parent_version: 70
 implements:
   - internal/chainresolver/chainresolver_test.go
 ---
@@ -10,8 +10,8 @@ implements:
 ## Context
 
 Tests use `t.TempDir()` to create an isolated project structure
-with spec nodes, test nodes, and external dependencies. Each test
-builds the minimal filesystem needed and calls `ResolveChain`.
+with spec nodes and test nodes. Each test builds the minimal
+filesystem needed and calls `ResolveChain`.
 
 File paths in `ChainItem.FilePath` use forward slashes regardless
 of the OS. Test assertions must use forward slashes.
@@ -55,31 +55,18 @@ Expect:
   `"ROOT/b(interface)"`, `FilePath` pointing to `ROOT/b`'s
   `_node.md`, `Qualifier` = pointer to `"interface"`
 
-### Leaf node — with EXTERNAL/ dependency
-
-Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
-`EXTERNAL/db`). Create external dependency `db` with
-`_external.md` and `schema.sql`.
-
-Input: `"ROOT/a"`
-
-Expect:
-- `Dependencies`: items for `EXTERNAL/db` covering
-  `_external.md` and `schema.sql`, each with `Qualifier` = nil
-
 ### Test node — includes subject's dependencies
 
 Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
-`EXTERNAL/db`). Create test node `TEST/a` with its own
-depends_on `EXTERNAL/fixtures`.
+`ROOT/c`), `ROOT/c`. Create test node `TEST/a` with its own
+depends_on `ROOT/d`, `ROOT/d`.
 
 Input: `"TEST/a"`
 
 Expect:
 - `Ancestors`: `ROOT`, `ROOT/a` (subject in ancestors)
 - `Target`: `TEST/a`
-- `Dependencies`: items from both `EXTERNAL/db` and
-  `EXTERNAL/fixtures`
+- `Dependencies`: items from both `ROOT/c` and `ROOT/d`
 
 ### Test node — no own dependencies
 
@@ -200,19 +187,6 @@ Input: `"TEST/a"`
 Expect:
 - `Dependencies`: one item with `Qualifier` = `"interface"`
   (not two)
-
-### Shared EXTERNAL/ dependency is deduplicated
-
-Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
-`EXTERNAL/db`). Create test node `TEST/a` with depends_on
-`EXTERNAL/db`. Create external dependency `db` with
-`_external.md` and `schema.sql`.
-
-Input: `"TEST/a"`
-
-Expect:
-- Each file from `EXTERNAL/db` appears only once in
-  `Dependencies`
 
 ## Failure Cases
 

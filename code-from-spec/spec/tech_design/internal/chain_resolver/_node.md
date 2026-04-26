@@ -1,5 +1,5 @@
 ---
-version: 69
+version: 70
 parent_version: 12
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -88,16 +88,6 @@ For each entry in `DependsOn`:
    `"cannot resolve logical name: <name>"`.
 4. Add a `ChainItem` with the file path and qualifier to
    `Dependencies`.
-
-For each entry in `DependsOn` whose `LogicalName` starts with
-`EXTERNAL/`:
-1. Call `PathFromLogicalName` to get the `_external.md` path.
-2. Walk the dependency folder recursively using
-   `filepath.WalkDir`. Skip directories — only collect files.
-   Include all files. File paths are sorted and relative to
-   project root.
-3. Add a `ChainItem` with `Qualifier` = nil per collected
-   file to `Dependencies`.
 
 Sort `Dependencies` alphabetically by `FilePath`, then by
 `Qualifier` (nil sorts before non-nil).

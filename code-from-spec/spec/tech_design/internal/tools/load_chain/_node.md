@@ -1,5 +1,5 @@
 ---
-version: 50
+version: 51
 parent_version: 5
 depends_on:
   - path: EXTERNAL/google-uuid
@@ -7,11 +7,15 @@ depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 2
   - path: ROOT/tech_design/internal/chain_resolver
-    version: 69
+    version: 70
   - path: ROOT/tech_design/internal/frontmatter
     version: 32
   - path: ROOT/tech_design/internal/logical_names
     version: 28
+  - path: ROOT/tech_design/internal/normalizename
+    version: 2
+  - path: ROOT/tech_design/internal/parsenode
+    version: 30
   - path: ROOT/tech_design/internal/pathvalidation
     version: 11
 implements:
@@ -80,31 +84,30 @@ Opening delimiter: `<<<FILE_<uuid>>>`
 Closing delimiter: `<<<END_FILE_<uuid>>>`
 
 The same UUID is used for all files in the chain. Each section
-includes `path:` and optionally `node:` headers between the
-opening delimiter and the file content, separated by a blank
-line. Spec and dependency files include both `node:` and
-`path:`; code files include only `path:`.
+includes `node:` and `path:` headers between the opening
+delimiter and the file content, separated by a blank line.
+Code files include only `path:`.
 
 ```
 <<<FILE_550e8400-e29b-41d4-a716-446655440000>>>
 node: ROOT
 path: code-from-spec/spec/_node.md
 
-<file content>
+<# Public section content>
 <<<END_FILE_550e8400-e29b-41d4-a716-446655440000>>>
 
 <<<FILE_550e8400-e29b-41d4-a716-446655440000>>>
-node: EXTERNAL/database
-path: code-from-spec/external/database/_external.md
+node: ROOT/payments/fees/calculation
+path: code-from-spec/spec/payments/fees/calculation/_node.md
 
-<content of _external.md>
+<target content with reduced frontmatter>
 <<<END_FILE_550e8400-e29b-41d4-a716-446655440000>>>
 
 <<<FILE_550e8400-e29b-41d4-a716-446655440000>>>
-node: EXTERNAL/database
-path: code-from-spec/external/database/schema.sql
+node: ROOT/architecture/backend
+path: code-from-spec/spec/architecture/backend/_node.md
 
-<content of schema.sql>
+<# Public section content>
 <<<END_FILE_550e8400-e29b-41d4-a716-446655440000>>>
 
 <<<FILE_550e8400-e29b-41d4-a716-446655440000>>>
@@ -130,13 +133,53 @@ path: internal/payments/fees/calculation.go
    b. Call `ValidatePath` for each path against the working
       directory. If any fails, return a tool error.
 5. Generate a UUID using `github.com/google/uuid`.
-6. Call `ResolveChain` to resolve the full chain and read every
-   file in the chain into memory. For ancestors and dependencies only, strip the YAML frontmatter
-   before including the content. Build
-   the concatenated chain content using the UUID and the chain
-   output format, appending the code files after the
-   dependencies. If any step fails, return a tool error.
-7. Return the chain content as a success result.
+6. Call `ResolveChain` to resolve the full chain. If it fails,
+   return a tool error.
+7. Build the output by processing each part of the chain:
+
+   **Ancestors** — for each ancestor, call `ParseNode` with
+   the ancestor's logical name. Extract the `# Public`
+   section. If `Public` is nil, include an empty section.
+   The content is the `# Public` heading followed by its
+   content and all subsections, reconstructed as markdown.
+
+   **Target** — read the file and include it with a reduced
+   frontmatter containing only `version` and `implements`.
+   All other frontmatter fields are stripped.
+
+   **Dependencies** — for each dependency, call `ParseNode`
+   with the dependency's base logical name (without
+   qualifier). If the `ChainItem.Qualifier` is nil, extract
+   the `# Public` section (same as ancestors). If the
+   `Qualifier` is non-nil, find the `## <qualifier>`
+   subsection within `# Public` using
+   `normalizename.NormalizeName` for comparison, and include
+   only that subsection's content.
+
+   **Code** — for each code file, read the file and include
+   it as-is.
+
+   If any file cannot be read or parsed, return a tool error.
+
+8. Return the chain content as a success result.
+
+### Reduced frontmatter
+
+The target file's frontmatter is reduced to only the fields
+needed for code generation:
+
+```yaml
+---
+version: <version>
+implements:
+  - <path>
+  - <path>
+---
+```
+
+All other fields (`parent_version`, `subject_version`,
+`depends_on`) are stripped to save tokens and avoid
+confusing the subagent.
 
 ## Constraints
 
