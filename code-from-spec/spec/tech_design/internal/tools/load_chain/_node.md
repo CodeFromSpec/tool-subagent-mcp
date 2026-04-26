@@ -1,5 +1,5 @@
 ---
-version: 51
+version: 53
 parent_version: 5
 depends_on:
   - path: EXTERNAL/google-uuid
@@ -7,7 +7,7 @@ depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 2
   - path: ROOT/tech_design/internal/chain_resolver
-    version: 70
+    version: 71
   - path: ROOT/tech_design/internal/frontmatter
     version: 32
   - path: ROOT/tech_design/internal/logical_names
@@ -123,7 +123,7 @@ path: internal/payments/fees/calculation.go
    `TEST/` (or equals `ROOT` or `TEST`). If not, return a
    tool error: `"target must be a ROOT/ or TEST/
    logical name: <name>"`.
-2. Call `PathFromLogicalName`. If it returns false, return a
+2. Call `logicalnames.PathFromLogicalName`. If it returns false, return a
    tool error: `"invalid logical name: <name>"`.
 3. Call `ParseFrontmatter` on the resolved path. If it fails,
    return a tool error wrapping the underlying error.

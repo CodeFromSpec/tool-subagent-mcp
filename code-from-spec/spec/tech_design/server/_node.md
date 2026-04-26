@@ -1,5 +1,5 @@
 ---
-version: 44
+version: 45
 parent_version: 15
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
@@ -7,11 +7,11 @@ depends_on:
   - path: ROOT/tech_design/internal/tools
     version: 5
   - path: ROOT/tech_design/internal/tools/load_chain
-    version: 51
+    version: 53
   - path: ROOT/tech_design/internal/tools/patch_file
-    version: 2
+    version: 3
   - path: ROOT/tech_design/internal/tools/write_file
-    version: 34
+    version: 35
 implements:
   - cmd/subagent-mcp/main.go
 ---

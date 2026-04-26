@@ -1,5 +1,5 @@
 ---
-version: 70
+version: 71
 parent_version: 12
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -60,10 +60,10 @@ subsection within `# Public`.
 **Step 1 — Ancestors and Target**
 
 Starting from the target logical name, repeatedly call
-`ParentLogicalName` to walk upward, collecting each
+`logicalnames.ParentLogicalName` to walk upward, collecting each
 logical name. Sort the list by logical name alphabetically.
 
-For each logical name, call `PathFromLogicalName` to
+For each logical name, call `logicalnames.PathFromLogicalName` to
 resolve the file path and create a `ChainItem` with
 `Qualifier` = nil.
 
@@ -78,9 +78,9 @@ node's frontmatter. Collect all `DependsOn` entries from both
 and process them together.
 
 For each entry in `DependsOn`:
-1. Call `PathFromLogicalName` to get the file path.
-2. Determine the qualifier: call `HasQualifier` and
-   `QualifierName` on the logical name. If the logical name
+1. Call `logicalnames.PathFromLogicalName` to get the file path.
+2. Determine the qualifier: call `logicalnames.HasQualifier` and
+   `logicalnames.QualifierName` on the logical name. If the logical name
    has a qualifier, set `Qualifier` to that value. Otherwise,
    set `Qualifier` to nil.
 3. Verify the file exists on disk (using `os.Stat`). If it
@@ -124,7 +124,7 @@ When removing duplicates, keep the first occurrence.
 
 ### Error handling
 
-- If `PathFromLogicalName` returns false for any logical name →
+- If `logicalnames.PathFromLogicalName` returns false for any logical name →
   return error: `"cannot resolve logical name: <name>"`.
 - If `ParseFrontmatter` fails → return error wrapping the
   underlying error.

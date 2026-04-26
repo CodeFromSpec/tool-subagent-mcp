@@ -19,7 +19,7 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
 
-	logicalnames "github.com/CodeFromSpec/tool-subagent-mcp/v2/internal/logical_names"
+	"github.com/CodeFromSpec/tool-subagent-mcp/v2/internal/logicalnames"
 	"github.com/CodeFromSpec/tool-subagent-mcp/v2/internal/normalizename"
 )
 
@@ -51,8 +51,8 @@ type Section struct {
 // NodeBody is the structured result of parsing a spec node file.
 // Public is nil when no "# Public" section exists.
 type NodeBody struct {
-	NameSection Section  // the first section (node name section)
-	Public      *Section // the "# Public" section, or nil
+	NameSection Section   // the first section (node name section)
+	Public      *Section  // the "# Public" section, or nil
 	Private     []Section // all other sections (not name, not public)
 }
 
@@ -88,7 +88,8 @@ func ParseNode(logicalName string) (*NodeBody, error) {
 	doc := md.Parser().Parse(text.NewReader(source))
 
 	// Step 5 — Validate: the first direct child of the document root must
-	// be a level-1 heading.
+	// be a level-1 heading. Any other node (paragraph, code block, etc.)
+	// before the first level-1 heading is an error.
 	firstChild := doc.FirstChild()
 	if firstChild == nil {
 		return nil, fmt.Errorf("%w: %s: document is empty", ErrUnexpectedContent, filePath)
@@ -99,7 +100,7 @@ func ParseNode(logicalName string) (*NodeBody, error) {
 	}
 
 	// Step 6 — Validate: node name section heading matches logical name.
-	// Apply NormalizeName to both the heading text and the logical name.
+	// Apply NormalizeName to both the heading text and the logical name for comparison.
 	firstHeadingText := headingText(firstHeading, source)
 	normalizedHeading := normalizename.NormalizeName(firstHeadingText)
 	normalizedLogicalName := normalizename.NormalizeName(logicalName)
@@ -111,7 +112,7 @@ func ParseNode(logicalName string) (*NodeBody, error) {
 	}
 
 	// Step 7 — Validate: no duplicate "# Public" sections.
-	// Walk all level-1 headings and count how many normalize to "public".
+	// Walk all direct children (level-1 headings) and count how many normalize to "public".
 	publicCount := 0
 	for child := doc.FirstChild(); child != nil; child = child.NextSibling() {
 		if h, ok := child.(*ast.Heading); ok && h.Level == 1 {
@@ -125,28 +126,28 @@ func ParseNode(logicalName string) (*NodeBody, error) {
 	}
 
 	// Step 8 — Validate: no duplicate level-2 subsections within "# Public".
-	// Collect level-2 headings within the public section and check for duplicates.
 	if err := validatePublicSubsections(doc, source, filePath); err != nil {
 		return nil, err
 	}
 
 	// Step 9 — Extract sections from the document.
-	sections, err := extractSections(doc, source, filePath)
+	sections, err := extractSections(doc, source)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %s: %v", ErrUnexpectedContent, filePath, err)
 	}
 
 	// Step 10 — Classify sections.
 	// The first section is always the node name section.
-	// A section normalizing to "public" is the public section.
-	// All others are private.
-	result := &NodeBody{}
+	// A section whose normalized heading equals "public" is the public section.
+	// All other sections are private.
 	if len(sections) == 0 {
-		// This should not happen because we validated a first heading exists.
+		// Should not happen because we validated a first heading exists above.
 		return nil, fmt.Errorf("%w: %s: no sections found", ErrUnexpectedContent, filePath)
 	}
 
-	result.NameSection = sections[0]
+	result := &NodeBody{
+		NameSection: sections[0],
+	}
 
 	for i := 1; i < len(sections); i++ {
 		s := sections[i]
@@ -163,39 +164,32 @@ func ParseNode(logicalName string) (*NodeBody, error) {
 }
 
 // skipFrontmatter finds the closing "---" delimiter and returns the bytes
-// that follow it. Returns an error if the frontmatter is not found.
+// that follow it. Returns an error if the frontmatter delimiters are not found.
 //
-// The frontmatter format requires:
+// The frontmatter format:
 //   - The file begins with a line that is exactly "---".
 //   - A second line that is exactly "---" closes the frontmatter.
 func skipFrontmatter(raw []byte) ([]byte, error) {
-	// Split into lines preserving endings so we can find exact positions.
-	// We look for the first "---" line, then the second "---" line.
-
-	const delimiter = "---"
-
-	// Find the first "---" at the start.
-	rest := raw
-	firstEnd := findDelimiterLine(rest)
+	// Find the first "---" line (the opening delimiter).
+	firstEnd := findDelimiterLine(raw)
 	if firstEnd < 0 {
 		return nil, errors.New("opening delimiter not found")
 	}
-	rest = raw[firstEnd:]
 
-	// Find the second "---" (the closing delimiter).
+	// Find the second "---" line (the closing delimiter) in the remainder.
+	rest := raw[firstEnd:]
 	secondEnd := findDelimiterLine(rest)
 	if secondEnd < 0 {
 		return nil, errors.New("closing delimiter not found")
 	}
 
 	// Return everything after the closing "---" line.
-	_ = delimiter
 	return rest[secondEnd:], nil
 }
 
 // findDelimiterLine finds the first line in data that is exactly "---"
-// (possibly followed by a newline) and returns the byte offset immediately
-// after that line (i.e., the start of the next line). Returns -1 if not found.
+// (possibly followed by a newline or carriage-return+newline) and returns
+// the byte offset immediately after that line. Returns -1 if not found.
 func findDelimiterLine(data []byte) int {
 	offset := 0
 	for offset < len(data) {
@@ -204,7 +198,7 @@ func findDelimiterLine(data []byte) int {
 		var line []byte
 		var nextOffset int
 		if lineEnd < 0 {
-			// Last line with no trailing newline.
+			// Last line, no trailing newline.
 			line = data[offset:]
 			nextOffset = len(data)
 		} else {
@@ -212,7 +206,7 @@ func findDelimiterLine(data []byte) int {
 			nextOffset = offset + lineEnd + 1
 		}
 
-		// Trim carriage return for Windows-style line endings.
+		// Trim carriage return to handle Windows-style line endings (\r\n).
 		line = bytes.TrimRight(line, "\r")
 
 		if string(line) == "---" {
@@ -225,7 +219,7 @@ func findDelimiterLine(data []byte) int {
 
 // headingText extracts the plain text content of a heading node by walking
 // its inline children and concatenating *ast.Text segments.
-// This returns the text without the "#" prefix.
+// Returns the text without the leading "#" prefix.
 func headingText(h *ast.Heading, source []byte) string {
 	var buf bytes.Buffer
 	for c := h.FirstChild(); c != nil; c = c.NextSibling() {
@@ -239,10 +233,10 @@ func headingText(h *ast.Heading, source []byte) string {
 // validatePublicSubsections checks that no two level-2 headings within the
 // "# Public" section have the same normalized text.
 func validatePublicSubsections(doc ast.Node, source []byte, filePath string) error {
-	// Walk direct children to find the public section, then check its level-2 headings.
 	inPublic := false
 	seen := make(map[string]bool)
 
+	// Walk direct children only (not recursive) to stay at the structural level.
 	for child := doc.FirstChild(); child != nil; child = child.NextSibling() {
 		h, ok := child.(*ast.Heading)
 		if !ok {
@@ -250,7 +244,7 @@ func validatePublicSubsections(doc ast.Node, source []byte, filePath string) err
 		}
 
 		if h.Level == 1 {
-			// Check if we're entering the public section.
+			// Update whether we are inside the public section.
 			normalized := normalizename.NormalizeName(headingText(h, source))
 			inPublic = normalized == "public"
 			continue
@@ -269,9 +263,10 @@ func validatePublicSubsections(doc ast.Node, source []byte, filePath string) err
 }
 
 // extractSections iterates the direct children of the document root and
-// builds a slice of Section values. Each level-1 heading starts a new
-// section. Level-2 headings within a section become subsections.
-func extractSections(doc ast.Node, source []byte, filePath string) ([]Section, error) {
+// builds a slice of Section values. Each level-1 heading starts a new section.
+// Level-2 headings within a section become subsections.
+// Level-3+ headings and all non-heading nodes are content within their enclosing section.
+func extractSections(doc ast.Node, source []byte) ([]Section, error) {
 	var sections []Section
 
 	// currentSection accumulates the current level-1 section being built.
@@ -281,8 +276,9 @@ func extractSections(doc ast.Node, source []byte, filePath string) ([]Section, e
 		currentSubsection *subsectionBuilder
 	)
 
-	// finishSubsection closes the current subsection and appends it to
-	// the current section (if any).
+	// finishSubsection closes the current level-2 subsection and appends it
+	// to the current section. endOffset is the exclusive end of the subsection
+	// content in source.
 	finishSubsection := func(endOffset int) {
 		if currentSubsection == nil {
 			return
@@ -295,17 +291,27 @@ func extractSections(doc ast.Node, source []byte, filePath string) ([]Section, e
 		currentSubsection = nil
 	}
 
-	// finishSection closes the current section and appends it to sections.
+	// finishSection closes the current level-1 section and appends it to sections.
+	// endOffset is the exclusive end of the section in source.
 	finishSection := func(endOffset int) {
 		if currentSection == nil {
 			return
 		}
+
 		// Close any open subsection first.
 		finishSubsection(endOffset)
 
-		// Section content is from the end of the level-1 heading line to either
-		// the first level-2 heading or endOffset if there are no subsections.
-		content := trimBlankLines(source[currentSection.contentStart:currentSection.contentEnd])
+		// Determine the end of the section's own content (before any subsections).
+		// If no level-2 headings were encountered, contentEnd was never set to a
+		// value different from contentStart — in that case the section content
+		// extends all the way to endOffset.
+		contentEnd := currentSection.contentEnd
+		if !currentSection.hadSubsection {
+			// No subsections: section content runs from contentStart to endOffset.
+			contentEnd = endOffset
+		}
+
+		content := trimBlankLines(source[currentSection.contentStart:contentEnd])
 		sections = append(sections, Section{
 			Heading:     currentSection.heading,
 			Content:     string(content),
@@ -317,47 +323,41 @@ func extractSections(doc ast.Node, source []byte, filePath string) ([]Section, e
 	for child := doc.FirstChild(); child != nil; child = child.NextSibling() {
 		h, ok := child.(*ast.Heading)
 		if !ok {
-			// Non-heading node: not a structural delimiter.
-			// If it appears before the first level-1 heading, it is an error.
-			// (This is already checked before extractSections is called, but
-			// guard here for safety against unexpected document structures.)
+			// Non-heading nodes (paragraphs, code blocks, lists, etc.) are content.
+			// They are captured implicitly by byte-offset ranges, so no action needed.
 			continue
 		}
 
 		if h.Level == 1 {
-			// The start offset for content is the byte after the heading line.
-			headingLineStop := headingLineStop(h)
-
-			// Close previous section at the start of this heading line.
+			// A new level-1 heading closes the previous section and starts a new one.
 			finishSection(headingLineStart(h))
 
-			// Begin new section. Content starts after the heading line.
-			// contentEnd will be updated when we encounter the first level-2
-			// heading (or end of section/document).
+			headingStop := headingLineStop(h)
 			currentSection = &sectionBuilder{
 				heading:      normalizename.NormalizeName(headingText(h, source)),
-				contentStart: headingLineStop,
-				contentEnd:   headingLineStop, // default: no content until updated
+				contentStart: headingStop,
+				contentEnd:   headingStop, // placeholder; updated when ## is found
 			}
 			continue
 		}
 
 		if h.Level == 2 {
 			if currentSection == nil {
-				// Orphan level-2 heading before any level-1 heading — treat as content.
-				// (The invariants say this should not happen in valid files.)
+				// Orphan level-2 heading before any level-1 heading.
+				// Invariants say this should not happen in valid files; skip it.
 				continue
 			}
 
 			headingStart := headingLineStart(h)
 			headingStop := headingLineStop(h)
 
-			if currentSubsection == nil {
+			if !currentSection.hadSubsection {
 				// This is the first level-2 heading in the current section.
-				// The section's content ends here.
+				// The section's own content ends here (before this ## line).
 				currentSection.contentEnd = headingStart
+				currentSection.hadSubsection = true
 			} else {
-				// Close the previous subsection.
+				// Close the previous subsection before starting a new one.
 				finishSubsection(headingStart)
 			}
 
@@ -368,9 +368,8 @@ func extractSections(doc ast.Node, source []byte, filePath string) ([]Section, e
 			continue
 		}
 
-		// Level 3+ headings are not structural; they are content nodes but
-		// goldmark represents them as siblings at the top level. They fall
-		// through here and are handled by content extraction via byte offsets.
+		// Level 3+ headings are not structural; they are part of the content
+		// captured via byte-offset ranges and need no special handling here.
 	}
 
 	// Close the last open section/subsection at the end of the source.
@@ -380,7 +379,7 @@ func extractSections(doc ast.Node, source []byte, filePath string) ([]Section, e
 }
 
 // headingLineStart returns the byte offset of the start of the heading line
-// in the source. For ATX headings, Lines() contains one segment.
+// in the source. For ATX headings, Lines() has exactly one segment.
 func headingLineStart(h *ast.Heading) int {
 	lines := h.Lines()
 	if lines.Len() == 0 {
@@ -400,8 +399,7 @@ func headingLineStop(h *ast.Heading) int {
 }
 
 // trimBlankLines removes leading and trailing blank lines (lines containing
-// only whitespace) from content. Mirrors the spec requirement: "Leading and
-// trailing blank lines in content are trimmed."
+// only whitespace) from content, as required by the spec.
 func trimBlankLines(content []byte) []byte {
 	s := string(content)
 	lines := strings.Split(s, "\n")
@@ -425,16 +423,17 @@ func trimBlankLines(content []byte) []byte {
 	return []byte(strings.Join(lines[start:end], "\n"))
 }
 
-// sectionBuilder accumulates data for a Section while parsing.
+// sectionBuilder accumulates data for a Section while iterating AST nodes.
 type sectionBuilder struct {
-	heading      string       // normalized heading
-	contentStart int          // byte offset of content start (after heading line)
-	contentEnd   int          // byte offset of content end (before first ## or end)
-	subsections  []Subsection // accumulated subsections
+	heading       string       // normalized heading text
+	contentStart  int          // byte offset of content start (byte after heading line)
+	contentEnd    int          // byte offset where own content ends (start of first ## line)
+	hadSubsection bool         // true once the first ## heading is encountered
+	subsections   []Subsection // accumulated subsections
 }
 
-// subsectionBuilder accumulates data for a Subsection while parsing.
+// subsectionBuilder accumulates data for a Subsection while iterating AST nodes.
 type subsectionBuilder struct {
-	heading      string // normalized heading
-	contentStart int    // byte offset of content start (after ## heading line)
+	heading      string // normalized heading text
+	contentStart int    // byte offset of content start (byte after ## heading line)
 }
