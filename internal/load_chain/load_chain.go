@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/internal/tools/load_chain@v51
+// code-from-spec: ROOT/tech_design/internal/tools/load_chain@v54
 package load_chain
 
 import (

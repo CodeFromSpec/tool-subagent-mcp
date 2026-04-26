@@ -1,4 +1,4 @@
-// code-from-spec: TEST/tech_design/internal/chain_resolver@v20
+// code-from-spec: TEST/tech_design/internal/chain_resolver@v21
 package chainresolver
 
 import (

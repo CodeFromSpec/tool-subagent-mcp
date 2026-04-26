@@ -1,4 +1,4 @@
-// code-from-spec: ROOT/tech_design/internal/tools/write_file@v34
+// code-from-spec: ROOT/tech_design/internal/tools/write_file@v35
 
 package write_file
 

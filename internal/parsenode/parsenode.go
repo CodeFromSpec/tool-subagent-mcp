@@ -1,4 +1,4 @@
-// code-from-spec: ROOT/tech_design/internal/parsenode@v30
+// code-from-spec: ROOT/tech_design/internal/parsenode@v31
 
 // Package parsenode parses the body of a spec node file and returns
 // a structured representation of all sections.
@@ -51,8 +51,8 @@ type Section struct {
 // NodeBody is the structured result of parsing a spec node file.
 // Public is nil when no "# Public" section exists.
 type NodeBody struct {
-	NameSection Section   // the first section (node name section)
-	Public      *Section  // the "# Public" section, or nil
+	NameSection Section  // the first section (node name section)
+	Public      *Section // the "# Public" section, or nil
 	Private     []Section // all other sections (not name, not public)
 }
 
@@ -232,11 +232,15 @@ func headingText(h *ast.Heading, source []byte) string {
 
 // validatePublicSubsections checks that no two level-2 headings within the
 // "# Public" section have the same normalized text.
+//
+// In goldmark, ALL headings (regardless of level) are direct children of
+// the document root — a level-2 heading is a sibling, not a child, of the
+// level-1 heading it logically belongs to. We therefore iterate direct
+// children while tracking whether we are inside the public section.
 func validatePublicSubsections(doc ast.Node, source []byte, filePath string) error {
 	inPublic := false
 	seen := make(map[string]bool)
 
-	// Walk direct children only (not recursive) to stay at the structural level.
 	for child := doc.FirstChild(); child != nil; child = child.NextSibling() {
 		h, ok := child.(*ast.Heading)
 		if !ok {
@@ -292,7 +296,8 @@ func extractSections(doc ast.Node, source []byte) ([]Section, error) {
 	}
 
 	// finishSection closes the current level-1 section and appends it to sections.
-	// endOffset is the exclusive end of the section in source.
+	// endOffset is the exclusive end of the section in source (i.e., the start of
+	// the next level-1 heading's line, or len(source)).
 	finishSection := func(endOffset int) {
 		if currentSection == nil {
 			return
@@ -302,9 +307,8 @@ func extractSections(doc ast.Node, source []byte) ([]Section, error) {
 		finishSubsection(endOffset)
 
 		// Determine the end of the section's own content (before any subsections).
-		// If no level-2 headings were encountered, contentEnd was never set to a
-		// value different from contentStart — in that case the section content
-		// extends all the way to endOffset.
+		// If no level-2 headings were encountered, the section content extends all
+		// the way to endOffset.
 		contentEnd := currentSection.contentEnd
 		if !currentSection.hadSubsection {
 			// No subsections: section content runs from contentStart to endOffset.
@@ -330,7 +334,9 @@ func extractSections(doc ast.Node, source []byte) ([]Section, error) {
 
 		if h.Level == 1 {
 			// A new level-1 heading closes the previous section and starts a new one.
-			finishSection(headingLineStart(h))
+			// The end of the previous section is the start of this heading's line
+			// (scanning backward from the text content start to find the "#" prefix).
+			finishSection(headingLineStart(h, source))
 
 			headingStop := headingLineStop(h)
 			currentSection = &sectionBuilder{
@@ -348,12 +354,13 @@ func extractSections(doc ast.Node, source []byte) ([]Section, error) {
 				continue
 			}
 
-			headingStart := headingLineStart(h)
+			// headingLineStart scans backward to the "#" prefix of this heading.
+			headingStart := headingLineStart(h, source)
 			headingStop := headingLineStop(h)
 
 			if !currentSection.hadSubsection {
 				// This is the first level-2 heading in the current section.
-				// The section's own content ends here (before this ## line).
+				// The section's own content ends at the start of this ## line.
 				currentSection.contentEnd = headingStart
 				currentSection.hadSubsection = true
 			} else {
@@ -379,17 +386,31 @@ func extractSections(doc ast.Node, source []byte) ([]Section, error) {
 }
 
 // headingLineStart returns the byte offset of the start of the heading line
-// in the source. For ATX headings, Lines() has exactly one segment.
-func headingLineStart(h *ast.Heading) int {
+// in the source (i.e., the byte where the "#" prefix begins).
+//
+// For ATX headings, goldmark's Lines().At(0).Start points to the text content
+// — after the "# " prefix — not to the "#" itself. We must scan backward
+// through source to find the preceding newline; the byte after that newline
+// is the true start of the heading line. If no preceding newline exists, the
+// heading is at the start of the source (offset 0).
+func headingLineStart(h *ast.Heading, source []byte) int {
 	lines := h.Lines()
 	if lines.Len() == 0 {
 		return 0
 	}
-	return lines.At(0).Start
+	pos := lines.At(0).Start
+	// Scan backward past the "# " prefix to reach the "#" character's line start.
+	for pos > 0 && source[pos-1] != '\n' {
+		pos--
+	}
+	return pos
 }
 
 // headingLineStop returns the byte offset immediately after the heading line
-// in the source (i.e., the first byte of the next line).
+// in the source (i.e., the first byte of the next line / start of content).
+//
+// goldmark's Lines().At(0).Stop is the byte immediately after the heading's
+// text content line, which is the correct content-start offset.
 func headingLineStop(h *ast.Heading) int {
 	lines := h.Lines()
 	if lines.Len() == 0 {

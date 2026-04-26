@@ -1,4 +1,4 @@
-// code-from-spec: TEST/tech_design/internal/parsenode@v4
+// code-from-spec: TEST/tech_design/internal/parsenode@v5
 
 // Package parsenode contains tests for the ParseNode function.
 // These tests are internal (same package) so they can access unexported helpers.

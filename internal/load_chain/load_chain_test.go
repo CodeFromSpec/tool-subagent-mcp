@@ -1,4 +1,4 @@
-// code-from-spec: TEST/tech_design/internal/tools/load_chain@v12
+// code-from-spec: TEST/tech_design/internal/tools/load_chain@v14
 package load_chain
 
 import (
