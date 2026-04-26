@@ -1,6 +1,6 @@
 ---
-version: 1
-subject_version: 1
+version: 2
+parent_version: 2
 implements:
   - internal/patch_file/patch_file_test.go
 ---

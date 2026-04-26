@@ -1,9 +1,9 @@
 ---
-version: 1
-parent_version: 11
+version: 2
+parent_version: 12
 depends_on:
   - path: EXTERNAL/codefromspec
-    version: 1
+    version: 3
   - path: EXTERNAL/golang-x-text
     version: 1
 implements:

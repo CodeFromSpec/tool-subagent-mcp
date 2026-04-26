@@ -1,17 +1,17 @@
 ---
-version: 1
-parent_version: 3
+version: 2
+parent_version: 5
 depends_on:
   - path: EXTERNAL/bluekeyes-go-gitdiff
     version: 1
   - path: EXTERNAL/mcp-go-sdk
     version: 2
   - path: ROOT/tech_design/internal/frontmatter
-    version: 31
+    version: 32
   - path: ROOT/tech_design/internal/logical_names
-    version: 27
+    version: 28
   - path: ROOT/tech_design/internal/pathvalidation
-    version: 10
+    version: 11
 implements:
   - internal/patch_file/patch_file.go
 ---

@@ -1,15 +1,15 @@
 ---
-version: 29
-parent_version: 11
+version: 30
+parent_version: 12
 depends_on:
   - path: EXTERNAL/codefromspec
-    version: 1
+    version: 3
   - path: EXTERNAL/yuin-goldmark
     version: 2
   - path: ROOT/tech_design/internal/logical_names
-    version: 26
+    version: 28
   - path: ROOT/tech_design/internal/normalizename
-    version: 1
+    version: 2
 implements:
   - internal/parsenode/parsenode.go
 ---

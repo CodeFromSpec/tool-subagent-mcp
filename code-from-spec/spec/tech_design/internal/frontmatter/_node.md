@@ -1,9 +1,9 @@
 ---
-version: 31
-parent_version: 11
+version: 32
+parent_version: 12
 depends_on:
   - path: EXTERNAL/codefromspec
-    version: 1
+    version: 3
   - path: EXTERNAL/goccy-go-yaml
     version: 1
 implements:

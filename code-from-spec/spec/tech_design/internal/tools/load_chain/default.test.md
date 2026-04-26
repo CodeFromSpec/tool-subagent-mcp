@@ -1,6 +1,6 @@
 ---
-version: 10
-parent_version: 49
+version: 11
+parent_version: 50
 implements:
   - internal/load_chain/load_chain_test.go
 ---
