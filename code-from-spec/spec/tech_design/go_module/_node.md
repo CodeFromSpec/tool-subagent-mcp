@@ -1,6 +1,6 @@
 ---
-version: 12
-parent_version: 14
+version: 13
+parent_version: 15
 ---
 
 # ROOT/tech_design/go_module
@@ -18,7 +18,7 @@ using the module path below. After code generation, run
 ## Contracts
 
 The module path is:
-`github.com/CodeFromSpec/tool-subagent-mcp`
+`github.com/CodeFromSpec/tool-subagent-mcp/v2`
 
 ## Constraints
 

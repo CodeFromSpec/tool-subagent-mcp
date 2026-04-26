@@ -1,5 +1,5 @@
 ---
-version: 14
+version: 15
 parent_version: 9
 ---
 
@@ -13,7 +13,7 @@ Technical design decisions for implementing the MCP server in Go.
 
 ### Go module
 
-The module path is `github.com/CodeFromSpec/tool-subagent-mcp`.
+The module path is `github.com/CodeFromSpec/tool-subagent-mcp/v2`.
 All internal package imports must use this prefix.
 
 ## Contracts
@@ -58,3 +58,8 @@ to carry.
 - Every error return value must be checked.
 - No test framework beyond the standard `testing` package.
 - No configuration files.
+- All test helper functions and types must be prefixed with `test`
+  (e.g., `testMakeFM`, `testIntPtr`, `testCase`). This prevents
+  name collisions with unexported functions and types in the
+  package under test when using internal test files (same package
+  as the implementation).
