@@ -1,17 +1,15 @@
 ---
-version: 27
+version: 29
 parent_version: 11
 depends_on:
   - path: EXTERNAL/codefromspec
     version: 1
-  - path: EXTERNAL/goccy-go-yaml
-    version: 1
   - path: EXTERNAL/yuin-goldmark
-    version: 1
-  - path: EXTERNAL/golang-x-text
-    version: 1
+    version: 2
   - path: ROOT/tech_design/internal/logical_names
     version: 26
+  - path: ROOT/tech_design/internal/normalizename
+    version: 1
 implements:
   - internal/parsenode/parsenode.go
 ---
@@ -20,7 +18,7 @@ implements:
 
 ## Intent
 
-Reads and parses a spec node file, returning a structured
+Parses the body of a spec node file, returning a structured
 representation of all sections.
 
 ## Context
@@ -31,32 +29,15 @@ representation of all sections.
 
 ### Dependencies
 
-- `github.com/goccy/go-yaml` — YAML parsing of the frontmatter
-  block.
 - `github.com/yuin/goldmark` — CommonMark parsing of the body.
   The body is parsed into an AST; only level-1 and level-2
   headings are used as structural delimiters.
-- `golang.org/x/text/cases` — Unicode simple case folding for
-  heading normalization.
 
 ## Contracts
 
 ### Interface
 
 ```go
-type DependsOn struct {
-	LogicalName string
-	Version     int
-}
-
-type Frontmatter struct {
-	Version        int
-	ParentVersion  *int
-	SubjectVersion *int
-	DependsOn      []DependsOn
-	Implements     []string
-}
-
 type Subsection struct {
 	Heading string
 	Content string
@@ -68,24 +49,22 @@ type Section struct {
 	Subsections []Subsection
 }
 
-type Node struct {
-	Frontmatter Frontmatter
+type NodeBody struct {
 	NameSection Section
 	Public      *Section
 	Private     []Section
 }
 
 var (
-	ErrRead               = errors.New("error reading file")
-	ErrFrontmatterParse   = errors.New("error parsing frontmatter")
-	ErrFrontmatterMissing = errors.New("frontmatter not found")
-	ErrUnexpectedContent  = errors.New("unexpected content before first heading")
-	ErrInvalidNodeName    = errors.New("node name section does not match file path")
-	ErrDuplicatePublic       = errors.New("duplicate public section")
+	ErrRead                 = errors.New("error reading file")
+	ErrFrontmatterMissing   = errors.New("frontmatter not found")
+	ErrUnexpectedContent    = errors.New("unexpected content before first heading")
+	ErrInvalidNodeName      = errors.New("node name section does not match logical name")
+	ErrDuplicatePublic      = errors.New("duplicate public section")
 	ErrDuplicateSubsection  = errors.New("duplicate subsection in public")
 )
 
-func ParseNode(logicalName string) (*Node, error)
+func ParseNode(logicalName string) (*NodeBody, error)
 ```
 
 `Public` is nil when no `# Public` section exists in the file.
@@ -94,24 +73,6 @@ Errors returned by `ParseNode` wrap the sentinel with context
 (file path, underlying error) using `fmt.Errorf`, so callers
 can match with `errors.Is()`.
 
-### Heading normalization (internal)
-
-```go
-func normalizeHeading(raw string) string
-```
-
-Internal helper. Applies the framework normalization rules to
-a raw heading text:
-
-1. Trim leading and trailing whitespace.
-2. Collapse each sequence of one or more whitespace characters
-   to a single space (`U+0020`).
-3. Apply Unicode simple case folding using `cases.Fold()` from
-   `golang.org/x/text/cases`.
-
-Whitespace characters are space (`U+0020`) and horizontal tab
-(`U+0009`).
-
 ### Parsing algorithm
 
 #### Step 1 — Resolve logical name
@@ -119,28 +80,12 @@ Whitespace characters are space (`U+0020`) and horizontal tab
 Resolve the logical name to a file path using
 `logicalnames.PathFromLogicalName`.
 
-#### Step 2 — Read file and extract frontmatter
+#### Step 2 — Skip frontmatter
 
-The frontmatter is the YAML block between the first `---` and
-the second `---` at the top of the file. Extract and parse it
-with go-yaml. Unknown fields are ignored.
-
-Frontmatter fields:
-
-| Field | Type | Description |
-|---|---|---|
-| `version` | int | Node version. |
-| `parent_version` | *int | Parent version. Nil if absent. |
-| `subject_version` | *int | Subject version (test nodes). Nil if absent. |
-| `depends_on` | []DependsOn | Cross-tree dependencies. |
-| `implements` | []string | Output files. |
-
-Each `depends_on` entry:
-
-| YAML key | Type | Required | Description |
-|---|---|---|---|
-| `path` | string | yes | Logical name of the dependency. |
-| `version` | int | yes | Known version of the dependency. |
+The frontmatter is delimited by the first `---` and the
+second `---` at the top of the file. Find the closing `---`
+and discard everything up to and including it. If no
+frontmatter delimiters are found, it is an error.
 
 #### Step 3 — Parse body as CommonMark
 
@@ -156,21 +101,21 @@ level-1 heading. If it is not, it is an error.
 
 Extract the inline text content of the first level-1 heading
 (see "Extracting heading text" in `EXTERNAL/yuin-goldmark`).
-Apply `normalizeHeading` to it and to the logical name received
+Apply `normalizename.NormalizeName` to it and to the logical name received
 as argument. If the results do not match, it is an error.
 
 #### Step 6 — Validate: no duplicate public section
 
 For each level-1 heading, extract its inline text content
 (see "Extracting heading text" in `EXTERNAL/yuin-goldmark`)
-and apply `normalizeHeading`. If more than one result equals
+and apply `normalizename.NormalizeName`. If more than one result equals
 `public`, it is an error.
 
 #### Step 7 — Validate: no duplicate public subsections
 
 For each level-2 heading within the public section, extract
 its inline text content (see "Extracting heading text" in
-`EXTERNAL/yuin-goldmark`) and apply `normalizeHeading`. If any
+`EXTERNAL/yuin-goldmark`) and apply `normalizename.NormalizeName`. If any
 two results are equal, it is an error.
 
 #### Step 8 — Extract sections
@@ -183,7 +128,7 @@ that section.
 For each section, extract:
 - **Heading** — extract the inline text content of the level-1
   heading (see "Extracting heading text" in
-  `EXTERNAL/yuin-goldmark`) and apply `normalizeHeading`.
+  `EXTERNAL/yuin-goldmark`) and apply `normalizename.NormalizeName`.
 - **Content** — the raw source bytes between the end of the
   level-1 heading and the start of the first level-2 heading
   within the section (or the start of the next level-1 heading
@@ -192,7 +137,7 @@ For each section, extract:
   starts a subsection. A subsection's heading is obtained by
   extracting the inline text content of the level-2 heading
   (see "Extracting heading text" in `EXTERNAL/yuin-goldmark`)
-  and applying `normalizeHeading`. A
+  and applying `normalizename.NormalizeName`. A
   subsection's content is the raw source bytes between the end
   of the level-2 heading and the start of the next level-2
   heading, the next level-1 heading, or the end of document.
@@ -202,7 +147,7 @@ Leading and trailing blank lines in content are trimmed.
 #### Step 9 — Classify sections
 
 1. The first section is the node name section.
-2. A section whose `normalizeHeading` result equals `public`
+2. A section whose `normalizename.NormalizeName` result equals `public`
    is the public section.
 3. All other sections are private.
 
@@ -231,7 +176,6 @@ All errors wrap a sentinel so callers can use `errors.Is()`:
 | Sentinel | Returned when |
 |---|---|
 | `ErrRead` | The file cannot be read. |
-| `ErrFrontmatterParse` | The YAML frontmatter is malformed. |
 | `ErrFrontmatterMissing` | No `---` delimiters found at the top of the file. |
 | `ErrUnexpectedContent` | Non-heading content appears before the first level-1 heading. |
 | `ErrInvalidNodeName` | The first level-1 heading does not match the logical name. |

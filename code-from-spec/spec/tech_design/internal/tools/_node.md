@@ -1,5 +1,5 @@
 ---
-version: 3
+version: 4
 parent_version: 11
 ---
 
@@ -45,8 +45,8 @@ indicate that the error is unrecoverable).
 ### Path validation
 
 File paths from `implements` are validated using `ValidatePath`
-in both `load_chain` and `write_file` before any write.
-Each handler resolves the frontmatter independently and
+in `load_chain`, `write_file`, and `patch_file` before any
+write. Each handler resolves the frontmatter independently and
 validates the paths against the working directory.
 
 ## Constraints

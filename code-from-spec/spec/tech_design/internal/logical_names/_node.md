@@ -1,5 +1,5 @@
 ---
-version: 26
+version: 27
 parent_version: 11
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -28,6 +28,8 @@ Centralizes conversion between logical names and file paths.
 func PathFromLogicalName(logicalName string) (string, bool)
 func HasParent(logicalName string) (hasParent, ok bool)
 func ParentLogicalName(logicalName string) (string, bool)
+func HasQualifier(logicalName string) (hasQualifier, ok bool)
+func QualifierName(logicalName string) (string, bool)
 ```
 
 ### PathFromLogicalName
@@ -37,10 +39,15 @@ project root. Returned paths always use forward slashes as
 separators, regardless of the operating system. Use
 `filepath.ToSlash` on the result before returning.
 
+If the logical name has a parenthetical qualifier, it is
+stripped before resolving the path. `ROOT/x(y)` resolves
+to the same path as `ROOT/x`.
+
 | Logical name | File path |
 |---|---|
 | `ROOT` | `code-from-spec/spec/_node.md` |
 | `ROOT/x/y` | `code-from-spec/spec/x/y/_node.md` |
+| `ROOT/x/y(z)` | `code-from-spec/spec/x/y/_node.md` |
 | `TEST` | `code-from-spec/spec/default.test.md` |
 | `TEST/x` | `code-from-spec/spec/x/default.test.md` |
 | `TEST/x(name)` | `code-from-spec/spec/x/name.test.md` |
@@ -49,6 +56,7 @@ separators, regardless of the operating system. Use
 Rules:
 - `ROOT` → `code-from-spec/spec/_node.md`
 - `ROOT/<path>` → `code-from-spec/spec/<path>/_node.md`
+- `ROOT/<path>(<qualifier>)` → `code-from-spec/spec/<path>/_node.md`
 - `TEST` → `code-from-spec/spec/default.test.md`
 - `TEST/<path>` → `code-from-spec/spec/<path>/default.test.md`
 - `TEST/<path>(<name>)` → `code-from-spec/spec/<path>/<name>.test.md`
@@ -64,6 +72,7 @@ the input is a valid logical name.
 |---|---|---|
 | `ROOT` | `false` | `true` |
 | `ROOT/x` | `true` | `true` |
+| `ROOT/x(y)` | `true` | `true` |
 | `TEST` | `true` | `true` |
 | `TEST/x` | `true` | `true` |
 | `TEST/x(name)` | `true` | `true` |
@@ -73,7 +82,7 @@ the input is a valid logical name.
 
 Rules:
 - `ROOT` → no parent
-- `ROOT/<path>` → has parent
+- `ROOT/<path>` and `ROOT/<path>(<qualifier>)` → has parent
 - `TEST` and `TEST/<path>` and `TEST/<path>(<name>)` →
   has parent (parent is always in the ROOT namespace)
 - `EXTERNAL/<name>` → no parent
@@ -86,10 +95,13 @@ name. Returns `(parent, true)` on success, `("", false)`
 if the node has no parent. Only call after confirming
 `HasParent` returns `true`.
 
+The qualifier is stripped before deriving the parent.
+
 | Logical name | Parent |
 |---|---|
 | `ROOT/x` | `ROOT` |
 | `ROOT/x/y` | `ROOT/x` |
+| `ROOT/x/y(z)` | `ROOT/x` |
 | `TEST` | `ROOT` |
 | `TEST/x` | `ROOT/x` |
 | `TEST/x(name)` | `ROOT/x` |
@@ -97,9 +109,44 @@ if the node has no parent. Only call after confirming
 Rules:
 - `ROOT/<path>` → strip last segment. If only one
   segment remains, parent is `ROOT`.
+- `ROOT/<path>(<qualifier>)` → strip qualifier, then
+  strip last segment.
 - `TEST` → `ROOT`
 - `TEST/<path>` → `ROOT/<path>`
 - `TEST/<path>(<name>)` → `ROOT/<path>`
+
+### HasQualifier
+
+Determines whether a logical name has a parenthetical
+qualifier. Returns `(hasQualifier, ok)` where `ok`
+indicates whether the input is a valid logical name.
+
+| Logical name | hasQualifier | ok |
+|---|---|---|
+| `ROOT` | `false` | `true` |
+| `ROOT/x` | `false` | `true` |
+| `ROOT/x(y)` | `true` | `true` |
+| `ROOT/x/y(z)` | `true` | `true` |
+| `TEST` | `false` | `true` |
+| `TEST/x` | `false` | `true` |
+| `TEST/x(name)` | `true` | `true` |
+| `EXTERNAL/x` | `false` | `true` |
+| `""` | `false` | `false` |
+
+### QualifierName
+
+Extracts the qualifier from a logical name. Returns
+`(qualifier, true)` on success, `("", false)` if there
+is no qualifier. Only call after confirming `HasQualifier`
+returns `true`.
+
+| Logical name | Qualifier |
+|---|---|
+| `ROOT/x(y)` | `"y"` |
+| `ROOT/x/y(z)` | `"z"` |
+| `TEST/x(name)` | `"name"` |
+| `ROOT/x` | `""`, `false` |
+| `ROOT` | `""`, `false` |
 
 ### Error handling
 

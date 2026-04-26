@@ -1,6 +1,6 @@
 ---
-version: 10
-parent_version: 27
+version: 12
+subject_version: 31
 implements:
   - internal/frontmatter/frontmatter_test.go
 ---
@@ -27,21 +27,60 @@ parent_version: 2
 depends_on:
   - path: ROOT/other
     version: 1
-  - path: EXTERNAL/database
+  - path: ROOT/architecture/backend
     version: 5
-    filter:
-      - "schema/*.sql"
 implements:
   - internal/config/config.go
   - internal/config/config_test.go
 ---
 ```
 
-Expect `DependsOn` has two entries:
-- `LogicalName` = `"ROOT/other"`, `Filter` = nil
-- `LogicalName` = `"EXTERNAL/database"`, `Filter` = `["schema/*.sql"]`
+Expect:
+- `Version` = 3
+- `ParentVersion` = pointer to 2
+- `SubjectVersion` = nil
+- `DependsOn` has two entries:
+  - `LogicalName` = `"ROOT/other"`, `Version` = 1
+  - `LogicalName` = `"ROOT/architecture/backend"`, `Version` = 5
+- `Implements` = `["internal/config/config.go", "internal/config/config_test.go"]`
 
-`Implements` = `["internal/config/config.go", "internal/config/config_test.go"]`.
+### Parses test node frontmatter
+
+Create a file with `subject_version`:
+
+```
+---
+version: 2
+subject_version: 5
+implements:
+  - internal/config/config_test.go
+---
+```
+
+Expect:
+- `Version` = 2
+- `ParentVersion` = nil
+- `SubjectVersion` = pointer to 5
+- `DependsOn` = nil
+- `Implements` = `["internal/config/config_test.go"]`
+
+### Parses frontmatter with only version
+
+Create a file with only `version`:
+
+```
+---
+version: 5
+---
+```
+
+Expect:
+- `Version` = 5
+- `ParentVersion` = nil
+- `SubjectVersion` = nil
+- `DependsOn` = nil
+- `Implements` = nil
+- No error.
 
 ### Parses frontmatter with only implements
 
@@ -57,18 +96,6 @@ implements:
 ```
 
 Expect `DependsOn` = nil, `Implements` = `["internal/config/config.go"]`.
-
-### Parses frontmatter with no relevant fields
-
-Create a file with only `version`:
-
-```
----
-version: 5
----
-```
-
-Expect `DependsOn` = nil, `Implements` = nil. No error.
 
 ### Ignores unknown frontmatter fields
 
@@ -97,7 +124,7 @@ Create a file with:
 ---
 ```
 
-Expect all fields zero/nil. No error.
+Expect `errors.Is(err, ErrMissingVersion)`.
 
 ### File with only frontmatter, nothing after
 
@@ -116,7 +143,7 @@ Expect no error. Body is not read.
 ### File does not exist
 
 Call `ParseFrontmatter` with a non-existent path.
-Expect an error containing the file path.
+Expect `errors.Is(err, ErrRead)`.
 
 ### No frontmatter delimiters
 
@@ -126,7 +153,7 @@ Create a file with no `---` at all:
 Just some text.
 ```
 
-Expect an error indicating frontmatter not found.
+Expect `errors.Is(err, ErrFrontmatterMissing)`.
 
 ### Malformed YAML in frontmatter
 
@@ -138,4 +165,18 @@ version: [invalid
 ---
 ```
 
-Expect an error indicating parse failure.
+Expect `errors.Is(err, ErrFrontmatterParse)`.
+
+### Missing version field
+
+Create a file with:
+
+```
+---
+parent_version: 1
+implements:
+  - internal/config/config.go
+---
+```
+
+Expect `errors.Is(err, ErrMissingVersion)`.

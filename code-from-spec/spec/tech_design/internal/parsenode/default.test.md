@@ -1,6 +1,6 @@
 ---
-version: 1
-subject_version: 26
+version: 3
+subject_version: 29
 implements:
   - internal/parsenode/parsenode_test.go
 ---
@@ -36,11 +36,6 @@ This node has only a name section.
 ```
 
 Expect:
-- `Frontmatter.Version` = 3
-- `Frontmatter.ParentVersion` = pointer to 1
-- `Frontmatter.SubjectVersion` = nil
-- `Frontmatter.DependsOn` = nil
-- `Frontmatter.Implements` = nil
 - `NameSection.Heading` = `"root/x"` (normalized)
 - `NameSection.Content` = `"This node has only a name section."`
 - `NameSection.Subsections` = nil
@@ -85,11 +80,6 @@ Chose percentage-based over flat fees.
 ```
 
 Expect:
-- `Frontmatter.Version` = 5
-- `Frontmatter.ParentVersion` = pointer to 2
-- `Frontmatter.DependsOn` = one entry:
-  `LogicalName` = `"ROOT/architecture/backend"`, `Version` = 3
-- `Frontmatter.Implements` = `["internal/fees/fees.go"]`
 - `NameSection.Heading` = `"root/payments/fees"`
 - `NameSection.Content` = `"Calculates transaction fees."`
 - `Public` not nil:
@@ -106,7 +96,7 @@ Expect:
   - `Heading` = `"decisions"`, `Content` =
     `"Chose percentage-based over flat fees."`
 
-### Test node with subject_version
+### Test node body
 
 Logical name: `TEST/x`
 
@@ -129,8 +119,6 @@ Check basic behavior.
 ```
 
 Expect:
-- `Frontmatter.SubjectVersion` = pointer to 5
-- `Frontmatter.ParentVersion` = nil
 - `NameSection.Heading` = `"test/x"`
 - `NameSection.Content` = `"Test cases for x."`
 - `NameSection.Subsections` has 1 entry:
@@ -183,33 +171,6 @@ Types and functions.
 Expect:
 - `Public.Content` = `"This is direct content of the public section."`
 - `Public.Subsections` has 1 entry with `Heading` = `"interface"`
-
-### Multiple depends_on entries
-
-Logical name: `ROOT/b`
-
-```
----
-version: 1
-depends_on:
-  - path: ROOT/x
-    version: 2
-  - path: ROOT/y
-    version: 7
-  - path: ROOT/z
-    version: 1
-implements:
-  - internal/b/b.go
----
-# ROOT/b
-
-Intent.
-```
-
-Expect `Frontmatter.DependsOn` has 3 entries in order:
-- `LogicalName` = `"ROOT/x"`, `Version` = 2
-- `LogicalName` = `"ROOT/y"`, `Version` = 7
-- `LogicalName` = `"ROOT/z"`, `Version` = 1
 
 ## Heading normalization
 
@@ -423,42 +384,6 @@ Expect:
   (leading and trailing blank lines trimmed)
 - Subsection content = `"Also surrounded."` (trimmed)
 
-## Frontmatter edge cases
-
-### Unknown fields are ignored
-
-Logical name: `ROOT/k`
-
-```
----
-version: 3
-parent_version: 1
-custom_field: hello
-another: 42
----
-# ROOT/k
-
-Intent.
-```
-
-Expect no error. `Frontmatter.Version` = 3,
-`Frontmatter.ParentVersion` = pointer to 1.
-
-### Empty frontmatter
-
-Logical name: `ROOT/l`
-
-```
----
----
-# ROOT/l
-
-Intent.
-```
-
-Expect no error. `Frontmatter.Version` = 0, all pointer
-fields nil, `DependsOn` nil, `Implements` nil.
-
 ## Validation errors
 
 ### File does not exist
@@ -479,21 +404,6 @@ Just text.
 ```
 
 Expect `errors.Is(err, ErrFrontmatterMissing)`.
-
-### Malformed YAML in frontmatter
-
-Logical name: `ROOT/n`
-
-```
----
-version: [invalid
----
-# ROOT/n
-
-Intent.
-```
-
-Expect `errors.Is(err, ErrFrontmatterParse)`.
 
 ### Content before first heading
 

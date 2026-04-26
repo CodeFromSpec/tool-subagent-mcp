@@ -13,6 +13,8 @@ files.
   files included
 - **write_file** — writes a generated file to disk, validated
   against the node's `implements` list
+- **patch_file** — applies a unified diff to an existing file,
+  validated against the node's `implements` list
 
 ## Install
 
