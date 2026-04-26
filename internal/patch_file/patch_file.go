@@ -1,4 +1,4 @@
-// code-from-spec: ROOT/tech_design/internal/tools/patch_file@v2
+// spec: ROOT/tech_design/internal/tools/patch_file@v3
 
 // Package patch_file implements the patch_file MCP tool handler.
 // It applies a unified diff to an existing file, after validating
@@ -17,7 +17,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/CodeFromSpec/tool-subagent-mcp/v2/internal/frontmatter"
-	logicalnames "github.com/CodeFromSpec/tool-subagent-mcp/v2/internal/logical_names"
+	"github.com/CodeFromSpec/tool-subagent-mcp/v2/internal/logicalnames"
 	"github.com/CodeFromSpec/tool-subagent-mcp/v2/internal/pathvalidation"
 )
 
@@ -28,63 +28,60 @@ type PatchFileArgs struct {
 	Diff        string `json:"diff" jsonschema:"Unified diff to apply to the file."`
 }
 
-// toolError is a convenience helper that returns a tool error result.
-// Tool errors are returned to the agent with IsError: true so the
-// server continues running after an expected failure.
-func toolError(msg string) (*mcp.CallToolResult, any, error) {
+// toolError returns an MCP tool error result with the given message.
+// Tool errors are returned as IsError: true so the server keeps running.
+func toolError(message string) (*mcp.CallToolResult, any, error) {
 	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: msg}},
+		Content: []mcp.Content{&mcp.TextContent{Text: message}},
 		IsError: true,
 	}, nil, nil
 }
 
 // HandlePatchFile is the handler for the patch_file MCP tool.
-// It validates the logical name, resolves the spec file, checks the
-// implements list, then applies the provided unified diff to the file.
+// It validates the path against the node's implements list and applies
+// a unified diff to the target file.
 func HandlePatchFile(
 	ctx context.Context,
 	req *mcp.CallToolRequest,
 	args PatchFileArgs,
 ) (*mcp.CallToolResult, any, error) {
-
 	// Step 1: Validate that the logical name starts with ROOT/ or TEST/
-	// (or equals ROOT or TEST). These are the only valid namespaces.
+	// (or equals ROOT or TEST). This is a basic sanity check before resolving.
 	name := args.LogicalName
-	validPrefix := strings.HasPrefix(name, "ROOT/") ||
-		strings.HasPrefix(name, "TEST/") ||
-		name == "ROOT" ||
-		name == "TEST"
-	if !validPrefix {
+	if name != "ROOT" && name != "TEST" &&
+		!strings.HasPrefix(name, "ROOT/") &&
+		!strings.HasPrefix(name, "TEST/") {
 		return toolError(fmt.Sprintf("invalid logical name: %s", name))
 	}
 
-	// Step 2: Resolve the logical name to a spec file path.
-	specPath, ok := logicalnames.PathFromLogicalName(name)
+	// Step 2: Resolve the logical name to a file path.
+	nodePath, ok := logicalnames.PathFromLogicalName(name)
 	if !ok {
 		return toolError(fmt.Sprintf("invalid logical name: %s", name))
 	}
 
-	// Step 3: Parse the frontmatter of the resolved spec file.
-	fm, err := frontmatter.ParseFrontmatter(specPath)
+	// Step 3: Parse the frontmatter from the resolved node file.
+	fm, err := frontmatter.ParseFrontmatter(nodePath)
 	if err != nil {
-		return toolError(fmt.Sprintf("failed to parse frontmatter for %s: %v", name, err))
+		return toolError(fmt.Sprintf("failed to read node %s: %v", name, err))
 	}
 
-	// Step 4: The implements list must not be empty.
+	// Step 4: Validate that the node has an implements list.
 	if len(fm.Implements) == 0 {
 		return toolError(fmt.Sprintf("node %s has no implements", name))
 	}
 
-	// Step 5: Normalize the provided path to forward slashes.
-	// This ensures consistent comparison regardless of OS separator.
+	// Step 5: Normalize the path to forward slashes for consistent comparison.
+	// This handles Windows paths where backslashes may be used.
 	normalizedPath := filepath.ToSlash(args.Path)
 
-	// Step 6: Validate the path against the project root (working directory).
-	// This is the security boundary — it prevents writes outside the project.
+	// Step 6: Validate the path against the working directory to prevent
+	// directory traversal attacks and writes outside the project root.
 	wd, err := os.Getwd()
 	if err != nil {
-		return toolError(fmt.Sprintf("failed to determine working directory: %v", err))
+		return toolError(fmt.Sprintf("failed to get working directory: %v", err))
 	}
+
 	if err := pathvalidation.ValidatePath(normalizedPath, wd); err != nil {
 		return toolError(fmt.Sprintf(
 			"path validation failed: %v. allowed paths: %s",
@@ -93,11 +90,11 @@ func HandlePatchFile(
 		))
 	}
 
-	// Step 7: Check that the normalized path is present in the frontmatter's
-	// implements list (exact string match). This enforces the write boundary.
+	// Step 7: Check that the normalized path appears in the node's implements list.
+	// This is the security boundary — only files declared in implements may be written.
 	allowed := false
-	for _, imp := range fm.Implements {
-		if imp == normalizedPath {
+	for _, impl := range fm.Implements {
+		if impl == normalizedPath {
 			allowed = true
 			break
 		}
@@ -110,8 +107,8 @@ func HandlePatchFile(
 		))
 	}
 
-	// Step 8: Read the existing file. patch_file requires the file to exist;
-	// use write_file to create new files.
+	// Step 8: Read the existing file content.
+	// patch_file does not create new files — the file must already exist.
 	existingContent, err := os.ReadFile(normalizedPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -120,14 +117,13 @@ func HandlePatchFile(
 		return toolError(fmt.Sprintf("failed to read %s: %v", normalizedPath, err))
 	}
 
-	// Step 9: Parse the unified diff. The diff must be valid and parseable.
+	// Step 9: Parse the unified diff provided by the caller.
 	files, _, err := gitdiff.Parse(strings.NewReader(args.Diff))
 	if err != nil {
 		return toolError(fmt.Sprintf("failed to parse diff: %v", err))
 	}
 
-	// Step 10: Exactly one file must be present in the diff.
-	// Applying a multi-file diff to a single path would be ambiguous.
+	// Step 10: The diff must target exactly one file — no more, no less.
 	if len(files) != 1 {
 		return toolError("diff must contain exactly one file")
 	}
@@ -140,7 +136,6 @@ func HandlePatchFile(
 	}
 
 	// Step 12: Write the patched content back to the file, overwriting the original.
-	// os.WriteFile preserves the path; the file must already exist (checked above).
 	if err := os.WriteFile(normalizedPath, output.Bytes(), 0644); err != nil {
 		return toolError(fmt.Sprintf("failed to write %s: %v", normalizedPath, err))
 	}
