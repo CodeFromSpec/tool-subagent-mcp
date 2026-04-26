@@ -1,9 +1,9 @@
 ---
-version: 27
-parent_version: 11
+version: 32
+parent_version: 12
 depends_on:
   - path: EXTERNAL/codefromspec
-    version: 1
+    version: 3
   - path: EXTERNAL/goccy-go-yaml
     version: 1
 implements:
@@ -29,6 +29,39 @@ Uses `github.com/goccy/go-yaml` for YAML parsing.
 
 ## Contracts
 
+### Interface
+
+```go
+type DependsOn struct {
+    LogicalName string
+    Version     int
+}
+
+type Frontmatter struct {
+    Version        int
+    ParentVersion  *int
+    SubjectVersion *int
+    DependsOn      []DependsOn
+    Implements     []string
+}
+
+var (
+    ErrRead               = errors.New("error reading file")
+    ErrFrontmatterParse   = errors.New("error parsing frontmatter")
+    ErrFrontmatterMissing = errors.New("frontmatter not found")
+    ErrMissingVersion     = errors.New("version field is required")
+)
+
+func ParseFrontmatter(filePath string) (*Frontmatter, error)
+```
+
+`ParseFrontmatter` reads the file, extracts the frontmatter block,
+and returns the parsed result.
+
+Errors returned by `ParseFrontmatter` wrap the sentinel with
+context (file path, underlying error) using `fmt.Errorf`, so
+callers can match with `errors.Is()`.
+
 ### Parsing
 
 The frontmatter is the YAML block between the first `---` and the
@@ -37,12 +70,15 @@ second `---` at the top of the file. Everything after the second
 
 Fields extracted:
 
-- `depends_on` (list of objects; see below)
-- `implements` (list of strings)
+| Field | Type | Description |
+|---|---|---|
+| `version` | int | Node version. Required. |
+| `parent_version` | *int | Parent version. Nil if absent. |
+| `subject_version` | *int | Subject version (test nodes). Nil if absent. |
+| `depends_on` | []DependsOn | Cross-tree dependencies. |
+| `implements` | []string | Output files. |
 
-All fields are optional at the parsing level — validation
-of required fields happens elsewhere. Unknown fields are
-ignored.
+Unknown fields are ignored.
 
 ### DependsOn structure
 
@@ -51,27 +87,7 @@ Each `depends_on` entry has:
 | YAML key | Type | Required | Description |
 |---|---|---|---|
 | `path` | string | yes | Logical name of the dependency. |
-| `filter` | []string | no | Glob patterns for file selection within an external dep folder. |
-
-### Interface
-
-```go
-type DependsOn struct {
-    LogicalName string
-    Filter      []string
-}
-
-type Frontmatter struct {
-    DependsOn  []DependsOn
-    Implements []string
-}
-
-func ParseFrontmatter(filePath string) (*Frontmatter, error)
-```
-
-`ParseFrontmatter` reads the file, extracts the frontmatter block,
-and returns the parsed result. It does not cache — caching is the
-caller's responsibility.
+| `version` | int | yes | Known version of the dependency. |
 
 ### Efficiency
 
@@ -81,6 +97,11 @@ read.
 
 ### Error handling
 
-- `error reading <path>: <underlying error>`
-- `error parsing frontmatter in <path>: <underlying error>`
-- `frontmatter not found in <path>`
+All errors wrap a sentinel so callers can use `errors.Is()`:
+
+| Sentinel | Returned when |
+|---|---|
+| `ErrRead` | The file cannot be read. |
+| `ErrFrontmatterParse` | The YAML frontmatter is malformed. |
+| `ErrFrontmatterMissing` | No `---` delimiters found at the top of the file. |
+| `ErrMissingVersion` | The `version` field is absent or zero. |

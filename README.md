@@ -13,6 +13,8 @@ files.
   files included
 - **write_file** — writes a generated file to disk, validated
   against the node's `implements` list
+- **patch_file** — applies a unified diff to an existing file,
+  validated against the node's `implements` list
 
 ## Install
 
@@ -53,6 +55,26 @@ Usage: subagent-mcp
 
 Starts an MCP server over stdin/stdout for Code from Spec
 subagents.
+
+Tools:
+  load_chain     Load the spec chain for a node.
+  write_file     Write a generated file to disk.
+  patch_file     Apply a unified diff to an existing file.
+
+The subagent should have no other tools available — no file
+read, write, or search capabilities beyond what this server
+provides. This confinement ensures the subagent works only
+from the provided context and writes only to declared outputs.
+
+MCP configuration example:
+  {
+    "mcpServers": {
+      "subagent-mcp": {
+        "type": "stdio",
+        "command": "<path-to-binary>"
+      }
+    }
+  }
 ```
 
 ## Documentation

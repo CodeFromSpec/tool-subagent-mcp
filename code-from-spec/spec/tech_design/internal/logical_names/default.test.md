@@ -1,6 +1,6 @@
 ---
-version: 13
-parent_version: 26
+version: 15
+parent_version: 28
 implements:
   - internal/logicalnames/logicalnames_test.go
 ---
@@ -24,6 +24,16 @@ Expect: `"code-from-spec/spec/_node.md"`, `true`.
 
 Input: `"ROOT/payments/processor"`
 Expect: `"code-from-spec/spec/payments/processor/_node.md"`, `true`.
+
+### ROOT with qualifier
+
+Input: `"ROOT/payments/processor(interface)"`
+Expect: `"code-from-spec/spec/payments/processor/_node.md"`, `true`.
+
+### ROOT with qualifier — strips qualifier from path
+
+Input: `"ROOT/x(y)"`
+Expect: `"code-from-spec/spec/x/_node.md"`, `true`.
 
 ### TEST without path
 
@@ -70,6 +80,11 @@ Expect: `false`, `true`.
 ### ROOT with path
 
 Input: `"ROOT/domain/config"`
+Expect: `true`, `true`.
+
+### ROOT with qualifier
+
+Input: `"ROOT/domain/config(interface)"`
 Expect: `true`, `true`.
 
 ### TEST without path
@@ -124,6 +139,11 @@ Expect: `"ROOT/domain"`, `true`.
 Input: `"ROOT/tech_design/logical_names"`
 Expect: `"ROOT/tech_design"`, `true`.
 
+### ROOT/x/y(z) — parent is ROOT/x
+
+Input: `"ROOT/domain/config(interface)"`
+Expect: `"ROOT/domain"`, `true`.
+
 ### TEST without path — parent is ROOT
 
 Input: `"TEST"`
@@ -150,6 +170,85 @@ Input: `"EXTERNAL/codefromspec"`
 Expect: `""`, `false`.
 
 ### Invalid input
+
+Input: `""`
+Expect: `""`, `false`.
+
+## HasQualifier
+
+### ROOT without qualifier
+
+Input: `"ROOT/x"`
+Expect: `false`, `true`.
+
+### ROOT with qualifier
+
+Input: `"ROOT/x(y)"`
+Expect: `true`, `true`.
+
+### ROOT with nested path and qualifier
+
+Input: `"ROOT/x/y/z(w)"`
+Expect: `true`, `true`.
+
+### ROOT alone
+
+Input: `"ROOT"`
+Expect: `false`, `true`.
+
+### TEST without qualifier
+
+Input: `"TEST/x"`
+Expect: `false`, `true`.
+
+### TEST with qualifier
+
+Input: `"TEST/x(edge_cases)"`
+Expect: `true`, `true`.
+
+### EXTERNAL
+
+Input: `"EXTERNAL/x"`
+Expect: `false`, `true`.
+
+### Empty string
+
+Input: `""`
+Expect: `false`, `false`.
+
+### Unrecognized prefix
+
+Input: `"UNKNOWN/x(y)"`
+Expect: `false`, `false`.
+
+## QualifierName
+
+### ROOT with qualifier
+
+Input: `"ROOT/x(y)"`
+Expect: `"y"`, `true`.
+
+### ROOT with nested path and qualifier
+
+Input: `"ROOT/x/y(interface)"`
+Expect: `"interface"`, `true`.
+
+### TEST with qualifier
+
+Input: `"TEST/x(edge_cases)"`
+Expect: `"edge_cases"`, `true`.
+
+### ROOT without qualifier
+
+Input: `"ROOT/x"`
+Expect: `""`, `false`.
+
+### ROOT alone
+
+Input: `"ROOT"`
+Expect: `""`, `false`.
+
+### Empty string
 
 Input: `""`
 Expect: `""`, `false`.

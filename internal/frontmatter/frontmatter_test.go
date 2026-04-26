@@ -1,16 +1,33 @@
-// spec: TEST/tech_design/internal/frontmatter@v10
+// code-from-spec: TEST/tech_design/internal/frontmatter@v13
 
 package frontmatter
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
+// testIntPtr returns a pointer to the given int value.
+// Used to construct expected *int values in assertions.
+func testIntPtr(v int) *int {
+	return &v
+}
+
+// testWriteFile writes content to a file at filePath, failing the
+// test immediately if the write fails.
+func testWriteFile(t *testing.T, filePath string, content string) {
+	t.Helper()
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+}
+
+// --- Happy Path ---
+
 // TestParsesCompleteFrontmatter verifies that all fields are correctly
-// parsed from a file containing depends_on (with and without filter)
+// parsed from a file containing version, parent_version, depends_on,
 // and implements.
 func TestParsesCompleteFrontmatter(t *testing.T) {
 	dir := t.TempDir()
@@ -20,47 +37,57 @@ parent_version: 2
 depends_on:
   - path: ROOT/other
     version: 1
-  - path: EXTERNAL/database
+  - path: ROOT/architecture/backend
     version: 5
-    filter:
-      - "schema/*.sql"
 implements:
   - internal/config/config.go
   - internal/config/config_test.go
 ---
 `
 	filePath := filepath.Join(dir, "_node.md")
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
+	testWriteFile(t, filePath, content)
 
 	fm, err := ParseFrontmatter(filePath)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify DependsOn has two entries.
+	// Version
+	if fm.Version != 3 {
+		t.Errorf("expected Version 3, got %d", fm.Version)
+	}
+
+	// ParentVersion
+	if fm.ParentVersion == nil {
+		t.Fatal("expected non-nil ParentVersion")
+	}
+	if *fm.ParentVersion != 2 {
+		t.Errorf("expected ParentVersion 2, got %d", *fm.ParentVersion)
+	}
+
+	// SubjectVersion should be nil
+	if fm.SubjectVersion != nil {
+		t.Errorf("expected nil SubjectVersion, got %v", fm.SubjectVersion)
+	}
+
+	// DependsOn: two entries
 	if len(fm.DependsOn) != 2 {
 		t.Fatalf("expected 2 DependsOn entries, got %d", len(fm.DependsOn))
 	}
-
-	// First entry: ROOT/other with no filter.
 	if fm.DependsOn[0].LogicalName != "ROOT/other" {
-		t.Errorf("expected LogicalName %q, got %q", "ROOT/other", fm.DependsOn[0].LogicalName)
+		t.Errorf("expected DependsOn[0].LogicalName %q, got %q", "ROOT/other", fm.DependsOn[0].LogicalName)
 	}
-	if fm.DependsOn[0].Filter != nil {
-		t.Errorf("expected nil Filter for first entry, got %v", fm.DependsOn[0].Filter)
+	if fm.DependsOn[0].Version != 1 {
+		t.Errorf("expected DependsOn[0].Version 1, got %d", fm.DependsOn[0].Version)
 	}
-
-	// Second entry: EXTERNAL/database with filter.
-	if fm.DependsOn[1].LogicalName != "EXTERNAL/database" {
-		t.Errorf("expected LogicalName %q, got %q", "EXTERNAL/database", fm.DependsOn[1].LogicalName)
+	if fm.DependsOn[1].LogicalName != "ROOT/architecture/backend" {
+		t.Errorf("expected DependsOn[1].LogicalName %q, got %q", "ROOT/architecture/backend", fm.DependsOn[1].LogicalName)
 	}
-	if len(fm.DependsOn[1].Filter) != 1 || fm.DependsOn[1].Filter[0] != "schema/*.sql" {
-		t.Errorf("expected Filter [\"schema/*.sql\"], got %v", fm.DependsOn[1].Filter)
+	if fm.DependsOn[1].Version != 5 {
+		t.Errorf("expected DependsOn[1].Version 5, got %d", fm.DependsOn[1].Version)
 	}
 
-	// Verify Implements.
+	// Implements: two entries
 	if len(fm.Implements) != 2 {
 		t.Fatalf("expected 2 Implements entries, got %d", len(fm.Implements))
 	}
@@ -72,8 +99,89 @@ implements:
 	}
 }
 
-// TestParsesOnlyImplements verifies parsing when only the implements
-// field is present. DependsOn should be nil.
+// TestParsesTestNodeFrontmatter verifies that subject_version is
+// correctly parsed, and that parent_version is nil when absent.
+func TestParsesTestNodeFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+	content := `---
+version: 2
+subject_version: 5
+implements:
+  - internal/config/config_test.go
+---
+`
+	filePath := filepath.Join(dir, "default.test.md")
+	testWriteFile(t, filePath, content)
+
+	fm, err := ParseFrontmatter(filePath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Version
+	if fm.Version != 2 {
+		t.Errorf("expected Version 2, got %d", fm.Version)
+	}
+
+	// ParentVersion should be nil
+	if fm.ParentVersion != nil {
+		t.Errorf("expected nil ParentVersion, got %v", fm.ParentVersion)
+	}
+
+	// SubjectVersion
+	if fm.SubjectVersion == nil {
+		t.Fatal("expected non-nil SubjectVersion")
+	}
+	if *fm.SubjectVersion != 5 {
+		t.Errorf("expected SubjectVersion 5, got %d", *fm.SubjectVersion)
+	}
+
+	// DependsOn should be nil
+	if fm.DependsOn != nil {
+		t.Errorf("expected nil DependsOn, got %v", fm.DependsOn)
+	}
+
+	// Implements
+	if len(fm.Implements) != 1 || fm.Implements[0] != "internal/config/config_test.go" {
+		t.Errorf("expected Implements [\"internal/config/config_test.go\"], got %v", fm.Implements)
+	}
+}
+
+// TestParsesOnlyVersion verifies that a frontmatter containing only
+// the version field is parsed correctly with all pointer/slice fields nil.
+func TestParsesOnlyVersion(t *testing.T) {
+	dir := t.TempDir()
+	content := `---
+version: 5
+---
+`
+	filePath := filepath.Join(dir, "_node.md")
+	testWriteFile(t, filePath, content)
+
+	fm, err := ParseFrontmatter(filePath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if fm.Version != 5 {
+		t.Errorf("expected Version 5, got %d", fm.Version)
+	}
+	if fm.ParentVersion != nil {
+		t.Errorf("expected nil ParentVersion, got %v", fm.ParentVersion)
+	}
+	if fm.SubjectVersion != nil {
+		t.Errorf("expected nil SubjectVersion, got %v", fm.SubjectVersion)
+	}
+	if fm.DependsOn != nil {
+		t.Errorf("expected nil DependsOn, got %v", fm.DependsOn)
+	}
+	if fm.Implements != nil {
+		t.Errorf("expected nil Implements, got %v", fm.Implements)
+	}
+}
+
+// TestParsesOnlyImplements verifies that a frontmatter with version
+// and implements (but no depends_on) has nil DependsOn.
 func TestParsesOnlyImplements(t *testing.T) {
 	dir := t.TempDir()
 	content := `---
@@ -84,9 +192,7 @@ implements:
 ---
 `
 	filePath := filepath.Join(dir, "_node.md")
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
+	testWriteFile(t, filePath, content)
 
 	fm, err := ParseFrontmatter(filePath)
 	if err != nil {
@@ -101,35 +207,8 @@ implements:
 	}
 }
 
-// TestParsesNoRelevantFields verifies that a file with only version
-// (no depends_on, no implements) parses without error and returns
-// nil for both fields.
-func TestParsesNoRelevantFields(t *testing.T) {
-	dir := t.TempDir()
-	content := `---
-version: 5
----
-`
-	filePath := filepath.Join(dir, "_node.md")
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
-
-	fm, err := ParseFrontmatter(filePath)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if fm.DependsOn != nil {
-		t.Errorf("expected nil DependsOn, got %v", fm.DependsOn)
-	}
-	if fm.Implements != nil {
-		t.Errorf("expected nil Implements, got %v", fm.Implements)
-	}
-}
-
-// TestIgnoresUnknownFields verifies that unknown YAML fields in the
-// frontmatter do not cause errors and known fields are still parsed.
+// TestIgnoresUnknownFields verifies that unknown YAML keys do not
+// cause errors, and that known fields are still parsed correctly.
 func TestIgnoresUnknownFields(t *testing.T) {
 	dir := t.TempDir()
 	content := `---
@@ -140,16 +219,20 @@ another: 42
 ---
 `
 	filePath := filepath.Join(dir, "_node.md")
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
+	testWriteFile(t, filePath, content)
 
 	fm, err := ParseFrontmatter(filePath)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// No relevant fields set, so both should be nil.
+	if fm.Version != 1 {
+		t.Errorf("expected Version 1, got %d", fm.Version)
+	}
+	if fm.ParentVersion == nil || *fm.ParentVersion != 1 {
+		t.Errorf("expected ParentVersion 1, got %v", fm.ParentVersion)
+	}
+	// Unknown fields are ignored; DependsOn and Implements should be nil.
 	if fm.DependsOn != nil {
 		t.Errorf("expected nil DependsOn, got %v", fm.DependsOn)
 	}
@@ -158,33 +241,26 @@ another: 42
 	}
 }
 
-// TestEmptyFrontmatter verifies that an empty frontmatter block
-// (just two --- delimiters) returns zero/nil fields without error.
+// --- Edge Cases ---
+
+// TestEmptyFrontmatter verifies that a file with an empty frontmatter
+// block (no fields at all) returns ErrMissingVersion.
 func TestEmptyFrontmatter(t *testing.T) {
 	dir := t.TempDir()
 	content := `---
 ---
 `
 	filePath := filepath.Join(dir, "_node.md")
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
+	testWriteFile(t, filePath, content)
 
-	fm, err := ParseFrontmatter(filePath)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if fm.DependsOn != nil {
-		t.Errorf("expected nil DependsOn, got %v", fm.DependsOn)
-	}
-	if fm.Implements != nil {
-		t.Errorf("expected nil Implements, got %v", fm.Implements)
+	_, err := ParseFrontmatter(filePath)
+	if !errors.Is(err, ErrMissingVersion) {
+		t.Errorf("expected errors.Is(err, ErrMissingVersion), got: %v", err)
 	}
 }
 
-// TestFileWithOnlyFrontmatter verifies that a file ending right
-// after the closing --- delimiter is handled correctly.
+// TestFileWithOnlyFrontmatter verifies that a file that ends
+// immediately after the closing delimiter is parsed without error.
 func TestFileWithOnlyFrontmatter(t *testing.T) {
 	dir := t.TempDir()
 	content := `---
@@ -192,60 +268,47 @@ version: 1
 ---
 `
 	filePath := filepath.Join(dir, "_node.md")
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
+	testWriteFile(t, filePath, content)
 
 	fm, err := ParseFrontmatter(filePath)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// version is not extracted by the parser, so all fields nil.
-	if fm.DependsOn != nil {
-		t.Errorf("expected nil DependsOn, got %v", fm.DependsOn)
-	}
-	if fm.Implements != nil {
-		t.Errorf("expected nil Implements, got %v", fm.Implements)
+	if fm.Version != 1 {
+		t.Errorf("expected Version 1, got %d", fm.Version)
 	}
 }
 
-// TestFileDoesNotExist verifies that parsing a non-existent file
-// returns an error containing the file path.
+// --- Failure Cases ---
+
+// TestFileDoesNotExist verifies that calling ParseFrontmatter with a
+// non-existent path returns an error wrapping ErrRead.
 func TestFileDoesNotExist(t *testing.T) {
 	nonExistent := filepath.Join(t.TempDir(), "does_not_exist.md")
 
 	_, err := ParseFrontmatter(nonExistent)
-	if err == nil {
-		t.Fatal("expected an error for non-existent file, got nil")
-	}
-	if !strings.Contains(err.Error(), nonExistent) {
-		t.Errorf("expected error to contain path %q, got: %v", nonExistent, err)
+	if !errors.Is(err, ErrRead) {
+		t.Errorf("expected errors.Is(err, ErrRead), got: %v", err)
 	}
 }
 
-// TestNoFrontmatterDelimiters verifies that a file without any ---
-// delimiters returns an error indicating frontmatter was not found.
+// TestNoFrontmatterDelimiters verifies that a file with no --- lines
+// returns an error wrapping ErrFrontmatterMissing.
 func TestNoFrontmatterDelimiters(t *testing.T) {
 	dir := t.TempDir()
-	content := `Just some text.
-`
+	content := "Just some text.\n"
 	filePath := filepath.Join(dir, "_node.md")
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
+	testWriteFile(t, filePath, content)
 
 	_, err := ParseFrontmatter(filePath)
-	if err == nil {
-		t.Fatal("expected an error for missing frontmatter, got nil")
-	}
-	if !strings.Contains(err.Error(), filePath) {
-		t.Errorf("expected error to contain path %q, got: %v", filePath, err)
+	if !errors.Is(err, ErrFrontmatterMissing) {
+		t.Errorf("expected errors.Is(err, ErrFrontmatterMissing), got: %v", err)
 	}
 }
 
-// TestMalformedYAML verifies that invalid YAML between the
-// frontmatter delimiters produces a parse error.
+// TestMalformedYAML verifies that invalid YAML in the frontmatter
+// block returns an error wrapping ErrFrontmatterParse.
 func TestMalformedYAML(t *testing.T) {
 	dir := t.TempDir()
 	content := `---
@@ -253,15 +316,29 @@ version: [invalid
 ---
 `
 	filePath := filepath.Join(dir, "_node.md")
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
+	testWriteFile(t, filePath, content)
 
 	_, err := ParseFrontmatter(filePath)
-	if err == nil {
-		t.Fatal("expected an error for malformed YAML, got nil")
+	if !errors.Is(err, ErrFrontmatterParse) {
+		t.Errorf("expected errors.Is(err, ErrFrontmatterParse), got: %v", err)
 	}
-	if !strings.Contains(err.Error(), filePath) {
-		t.Errorf("expected error to contain path %q, got: %v", filePath, err)
+}
+
+// TestMissingVersionField verifies that a frontmatter block that
+// omits the version field returns an error wrapping ErrMissingVersion.
+func TestMissingVersionField(t *testing.T) {
+	dir := t.TempDir()
+	content := `---
+parent_version: 1
+implements:
+  - internal/config/config.go
+---
+`
+	filePath := filepath.Join(dir, "_node.md")
+	testWriteFile(t, filePath, content)
+
+	_, err := ParseFrontmatter(filePath)
+	if !errors.Is(err, ErrMissingVersion) {
+		t.Errorf("expected errors.Is(err, ErrMissingVersion), got: %v", err)
 	}
 }

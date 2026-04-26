@@ -1,15 +1,15 @@
 ---
-version: 33
-parent_version: 3
+version: 35
+parent_version: 5
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 2
   - path: ROOT/tech_design/internal/frontmatter
-    version: 27
+    version: 32
   - path: ROOT/tech_design/internal/logical_names
-    version: 26
+    version: 28
   - path: ROOT/tech_design/internal/pathvalidation
-    version: 10
+    version: 11
 implements:
   - internal/write_file/write_file.go
 ---
@@ -76,7 +76,7 @@ func HandleWriteFile(
 1. Validate that `args.LogicalName` starts with `ROOT/` or
    `TEST/` (or equals `ROOT` or `TEST`). If not, return a
    tool error.
-2. Call `PathFromLogicalName`. If it returns false, return a
+2. Call `logicalnames.PathFromLogicalName`. If it returns false, return a
    tool error: `"invalid logical name: <name>"`.
 3. Call `ParseFrontmatter` on the resolved path. If it fails,
    return a tool error wrapping the underlying error.

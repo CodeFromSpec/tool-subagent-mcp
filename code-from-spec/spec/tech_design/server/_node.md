@@ -1,15 +1,17 @@
 ---
-version: 41
-parent_version: 14
+version: 47
+parent_version: 15
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
     version: 2
   - path: ROOT/tech_design/internal/tools
-    version: 3
+    version: 5
   - path: ROOT/tech_design/internal/tools/load_chain
-    version: 49
+    version: 54
+  - path: ROOT/tech_design/internal/tools/patch_file
+    version: 4
   - path: ROOT/tech_design/internal/tools/write_file
-    version: 33
+    version: 35
 implements:
   - cmd/subagent-mcp/main.go
 ---
@@ -46,6 +48,7 @@ the MCP server, registers tools, and runs the server.
      on the tool so that `tools/list` advertises the maximum
      result size to the client.
    - `write_file.HandleWriteFile` with `WriteFileArgs`
+   - `patch_file.HandlePatchFile` with `PatchFileArgs`
 5. Call `s.Run(context.Background(), &mcp.StdioTransport{})`.
 6. If `Run` returns an error, print it to stderr and exit 1.
 7. Otherwise exit 0.
@@ -61,6 +64,7 @@ subagents.
 Tools:
   load_chain     Load the spec chain for a node.
   write_file     Write a generated file to disk.
+  patch_file     Apply a unified diff to an existing file.
 
 The subagent should have no other tools available — no file
 read, write, or search capabilities beyond what this server

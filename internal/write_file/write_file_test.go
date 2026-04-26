@@ -1,4 +1,4 @@
-// spec: TEST/tech_design/internal/tools/write_file@v5
+// code-from-spec: TEST/tech_design/internal/tools/write_file@v7
 package write_file
 
 import (

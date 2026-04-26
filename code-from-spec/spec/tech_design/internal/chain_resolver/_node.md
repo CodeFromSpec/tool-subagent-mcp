@@ -1,13 +1,13 @@
 ---
-version: 65
-parent_version: 11
+version: 71
+parent_version: 12
 depends_on:
   - path: EXTERNAL/codefromspec
-    version: 1
+    version: 3
   - path: ROOT/tech_design/internal/frontmatter
-    version: 27
+    version: 32
   - path: ROOT/tech_design/internal/logical_names
-    version: 26
+    version: 28
 implements:
   - internal/chainresolver/chainresolver.go
 ---
@@ -32,7 +32,8 @@ given target logical name.
 ```go
 type ChainItem struct {
     LogicalName string
-    FilePaths   []string
+    FilePath    string
+    Qualifier   *string
 }
 
 type Chain struct {
@@ -46,21 +47,25 @@ func ResolveChain(targetLogicalName string) (*Chain, error)
 ```
 
 `ResolveChain` returns the chain separated into ancestors, target,
-and dependencies. `Ancestors` and `Dependencies` are sorted by
-logical name alphabetically. Returns an error if the chain cannot
-be built.
+and dependencies. Returns an error if the chain cannot be built.
+
+Each `ChainItem` has a single `FilePath` and an optional
+`Qualifier`. When `Qualifier` is nil, the caller should use
+the `# Public` section of the file. When `Qualifier` is
+non-nil, the caller should use only the `## <qualifier>`
+subsection within `# Public`.
 
 ### Algorithm
 
 **Step 1 — Ancestors and Target**
 
 Starting from the target logical name, repeatedly call
-`ParentLogicalName` to walk upward, collecting each
+`logicalnames.ParentLogicalName` to walk upward, collecting each
 logical name. Sort the list by logical name alphabetically.
 
-For each logical name, call `PathFromLogicalName` to
-resolve the file path and create a `ChainItem` with a
-single-element `FilePaths` list.
+For each logical name, call `logicalnames.PathFromLogicalName` to
+resolve the file path and create a `ChainItem` with
+`Qualifier` = nil.
 
 The last item in the sorted list is the `Target`; the
 remaining items form `Ancestors`.
@@ -68,36 +73,24 @@ remaining items form `Ancestors`.
 **Step 2 — Dependencies**
 
 Read the target node's frontmatter using `ParseFrontmatter`.
-If the target is a `TEST/` node, also read the parent leaf
+If the target is a `TEST/` node, also read the subject
 node's frontmatter. Collect all `DependsOn` entries from both
 and process them together.
 
-For each entry in `DependsOn` whose `LogicalName` starts with
-`ROOT/`:
-1. Call `PathFromLogicalName` to get the file path.
-2. Verify the file exists on disk (using `os.Stat`). If it does
-   not exist, return error: `"cannot resolve logical name: <name>"`.
-3. If a `ChainItem` with the same logical name already exists
-   in `Dependencies`, skip it. Otherwise, add a `ChainItem`
-   with a single-element `FilePaths` list to `Dependencies`.
+For each entry in `DependsOn`:
+1. Call `logicalnames.PathFromLogicalName` to get the file path.
+2. Determine the qualifier: call `logicalnames.HasQualifier` and
+   `logicalnames.QualifierName` on the logical name. If the logical name
+   has a qualifier, set `Qualifier` to that value. Otherwise,
+   set `Qualifier` to nil.
+3. Verify the file exists on disk (using `os.Stat`). If it
+   does not exist, return error:
+   `"cannot resolve logical name: <name>"`.
+4. Add a `ChainItem` with the file path and qualifier to
+   `Dependencies`.
 
-For each entry in `DependsOn` whose `LogicalName` starts with
-`EXTERNAL/`:
-1. Call `PathFromLogicalName` to get the `_external.md` path.
-2. Walk the dependency folder recursively using
-   `filepath.WalkDir`. Skip directories — only collect files.
-   If the entry has a non-empty `Filter`, include `_external.md`
-   plus files whose path relative to the dependency folder
-   matches any pattern using `path.Match` (from the `path`
-   package, not `filepath`). If no `Filter`
-   is present, include all files. File paths are sorted and
-   relative to project root.
-3. If a `ChainItem` with the same logical name already exists
-   in `Dependencies`, merge the collected file paths into the
-   existing item. Otherwise, add a new `ChainItem` with the
-   collected `FilePaths` list to `Dependencies`.
-
-Sort `Dependencies` by logical name alphabetically.
+Sort `Dependencies` alphabetically by `FilePath`, then by
+`Qualifier` (nil sorts before non-nil).
 
 **Step 3 — Code**
 
@@ -115,21 +108,23 @@ Convert all file paths in `Ancestors`, `Target`,
 separators, regardless of the operating system. Use
 `filepath.ToSlash`.
 
-**Step 5 — Deduplicate file paths**
+**Step 5 — Deduplicate**
 
-Review the `Ancestors` and `Dependencies` lists and remove
-duplicate file paths. Each file path must appear only once
-across the entire chain — including across `Ancestors` and
-`Dependencies`. When a path appears more than once, keep the
-first occurrence and discard subsequent ones. This step is
-necessary because a file path may appear in both an ancestor
-and a dependency.
+Review `Ancestors` and `Dependencies` and remove duplicate
+entries. Two entries are considered duplicates when they have
+the same `FilePath` and the same `Qualifier`.
+
+Additionally, when an entry exists with a given `FilePath`
+and `Qualifier` = nil (meaning the entire `# Public` section),
+any other entry with the same `FilePath` and a non-nil
+`Qualifier` is redundant and must be removed — the full
+`# Public` already includes every subsection.
+
+When removing duplicates, keep the first occurrence.
 
 ### Error handling
 
-- If `PathFromLogicalName` returns false for any logical name →
+- If `logicalnames.PathFromLogicalName` returns false for any logical name →
   return error: `"cannot resolve logical name: <name>"`.
 - If `ParseFrontmatter` fails → return error wrapping the
   underlying error.
-- If a glob pattern fails to evaluate → return error:
-  `"error evaluating filter <pattern> for <EXTERNAL/name>: <err>"`.

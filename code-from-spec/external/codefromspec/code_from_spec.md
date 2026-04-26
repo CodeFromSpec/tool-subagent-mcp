@@ -1,12 +1,22 @@
-# Code From Spec - Complete Content
+# Code From Spec
 
-**Code from Spec** is a methodology where code is a generated artifact, not the source of truth. The source of truth is a hierarchy of specification files. To change behavior, you change the spec and regenerate. You never edit generated code directly.
+**Code From Spec** is a methodology where code is a generated
+artifact, not the source of truth. The source of truth is a hierarchy
+of specification files. To change behavior, you change the spec and
+regenerate. You never edit generated code directly.
 
-This methodology is designed for AI agent participation at every stage — writing specs, managing versions, detecting staleness, running resyncs, generating code, and assisting non-technical contributors with spec authoring.
+This methodology is designed for AI agent participation at every
+stage — writing specs, managing versions, detecting and resolving
+staleness, generating code, and assisting non-technical contributors
+with spec authoring.
+
+---
 
 ## The Model
 
-Specifications are organized as a tree. Each node adds precision to its parent — business intent at the root, implementation contracts at the leaves. Only leaf nodes generate code.
+Specifications are organized as a tree. Each node adds precision
+to its parent — high-level intent at the root, implementation
+detail at the leaves. Only leaf nodes generate code.
 
 ```
 root/
@@ -16,14 +26,66 @@ root/
         └── rounding/      ← leaf, implemented
 ```
 
-## Structure
+---
 
-```
-/
-  code-from-spec/
-    spec/                  ← spec tree
-    external/              ← external dependencies
-```
+## File Format
+
+Specification files use [CommonMark](https://commonmark.org/) for Markdown formatting and are
+UTF-8 encoded, without BOM.
+
+### YAML frontmatter
+
+Each file begins with a YAML frontmatter block. Frontmatter is not
+part of CommonMark — it is an extension adopted by this framework.
+
+The frontmatter block starts with a line containing exactly `---`
+(three hyphens, nothing else) as the first line of the file, and
+ends with the next line containing exactly `---`. The content
+between the two delimiters is parsed as YAML.
+
+### Heading levels
+
+Only ATX headings (`#` prefix) are recognized by the framework.
+Setext headings are not supported.
+
+Only two heading levels are structural for the framework:
+
+- **Level 1 (`#`)** — delimits top-level sections (node name,
+  `# Public`, private sections).
+- **Level 2 (`##`)** — delimits subsections within a top-level
+  section (e.g. `## Interface` within `# Public`).
+
+Headings of level 3 and deeper (`###`, `####`, ...) are content
+within the section or subsection that contains them. They have no
+structural meaning for the framework.
+
+### Heading content normalization
+
+Heading content is normalized before comparison using these rules,
+applied in order:
+
+1. **Trim** — leading and trailing whitespace is removed.
+2. **Collapse** — each sequence of one or more whitespace characters
+   within the heading content is replaced by a single `U+0020` (space).
+3. **Case fold** — the result is case-folded using Unicode simple
+   case folding.
+
+The whitespace characters recognized by the framework are space
+(`U+0020`) and horizontal tab (`U+0009`). Any other Unicode
+whitespace (e.g. `U+00A0` non-breaking space) is not recognized —
+it is treated as part of the heading text.
+
+These normalization rules apply equally to headings in specification
+files and to the parenthetical qualifier in logical names. For
+example, all of the following are equivalent:
+
+- `## Testes de aceitação` (heading in a file)
+- `##   TESTES   DE   ACEITAÇÃO  ` (heading in a file)
+- `ROOT/x/y(Testes de aceitação)` (logical name)
+- `ROOT/x/y(Testes    de  aceitação  )` (logical name)
+- `ROOT/x/y(testes de ACEITAÇÃO)` (logical name)
+
+---
 
 ## Specifications
 
@@ -31,21 +93,41 @@ Specifications are the source of truth from which code is generated.
 
 ### Location
 
-Specifications live under `spec/`.
+Specifications live under `<project root>/code-from-spec/`.
 
 ### Structure
 
-Specifications are organized as a hierarchical tree of nodes. Child nodes inherit the full context of their parents — constraints, conventions, and decisions declared in any ancestor apply to all descendants. This inheritance is automatic and mandatory.
+Specifications are organized as a hierarchical tree of nodes. Child
+nodes inherit the public content of all their ancestors — only what
+is explicitly marked public propagates down the tree (see Body).
+This inheritance is automatic and mandatory.
 
 ### Nodes
 
-Every spec node is a directory containing a `_node.md` file. The directory structure is the spec tree — a node's position in the filesystem is its position in the hierarchy.
+Every spec node is a directory containing a `_node.md` file. The
+directory structure is the spec tree — a node's position in the
+filesystem is its position in the hierarchy.
 
-Each `_node.md` describes one aspect of the system at a specific level of abstraction.
+Each `_node.md` describes one aspect of the system at a specific
+level of abstraction.
 
-A node with child directories is an **intermediate node**. A node without children is a **leaf node**. Intermediate nodes provide context and constraints to their descendants. Only leaf nodes are implemented — code is generated only from leaf nodes. A leaf node without `implements` is valid — it serves as documentation without generating code.
+A node with child directories is an **intermediate node**. A node
+without children is a **leaf node**. Intermediate nodes provide
+context and constraints to their descendants. Only leaf nodes may
+generate code. Not all leaf nodes do; some serve as documentation
+only.
 
-A **test node** is a file ending in `.test.md` placed inside the directory of the leaf node it tests. The canonical test node is named `default.test.md`. Additional test nodes use `<name>.test.md`. Only leaf nodes (those with `implements`) may have test nodes — test nodes alongside intermediate nodes are invalid.
+A **test node** is a file ending in `.test.md` placed inside the
+directory of the node it tests (its **subject**). The canonical test
+node is named `default.test.md`. Additional test nodes use
+`<name>.test.md`. Any node may have test nodes.
+
+Test nodes are not children of their subject — they have no parent
+in the tree. However, they receive the same inherited context as
+their subject: the public content of all ancestors of the subject
+node. Since test nodes are not part of the tree hierarchy, they may
+declare `depends_on` to children of their subject without creating
+circular dependencies.
 
 ```
 config/
@@ -56,19 +138,24 @@ config/
 
 ### Logical names
 
-Every node has a logical name derived from its position in the tree. Spec nodes use the `ROOT/` prefix; test nodes use the `TEST/` prefix.
+Every node has a logical name derived from its position in the tree.
+Spec nodes use the `ROOT/` prefix; test nodes use the `TEST/`
+prefix. A `ROOT/` reference may include a parenthetical qualifier
+to target a specific public subsection of the node (see Body).
 
 | Logical name | Resolves to |
 |---|---|
-| `ROOT` | `spec/_node.md` |
-| `ROOT/architecture/backend` | `spec/architecture/backend/_node.md` |
-| `ROOT/architecture/backend/config` | `spec/architecture/backend/config/_node.md` |
-| `TEST/architecture/backend/config` | `spec/architecture/backend/config/default.test.md` |
-| `TEST/architecture/backend/config(edge_cases)` | `spec/architecture/backend/config/edge_cases.test.md` |
+| `ROOT` | `code-from-spec/_node.md` |
+| `ROOT/architecture/backend` | `code-from-spec/architecture/backend/_node.md` |
+| `ROOT/architecture/backend/config` | `code-from-spec/architecture/backend/config/_node.md` |
+| `ROOT/architecture/backend/config(interface)` | `## Interface` subsection of `# Public` in `code-from-spec/architecture/backend/config/_node.md` |
+| `TEST/architecture/backend/config` | `code-from-spec/architecture/backend/config/default.test.md` |
+| `TEST/architecture/backend/config(edge_cases)` | `code-from-spec/architecture/backend/config/edge_cases.test.md` |
 
 Resolution rules:
-- `ROOT/x` → `spec/x/_node.md`
-- `TEST/x(y)` → `spec/x/y.test.md`
+- `ROOT/x` → `code-from-spec/x/_node.md` (`# Public`)
+- `ROOT/x(y)` → `## y` subsection of `# Public` in `code-from-spec/x/_node.md`
+- `TEST/x(y)` → `code-from-spec/x/y.test.md`
 - `TEST/x` is an alias for `TEST/x(default)`
 
 ### Frontmatter
@@ -78,13 +165,28 @@ Every node begins with a YAML frontmatter block.
 | Field | Description | Notes |
 |---|---|---|
 | `version` | See Versioning and Staleness. | All nodes |
-| `parent_version` | The version of the parent node this node was written against. For test nodes, the parent is the `_node.md` in the same directory. | Omitted by the root node |
-| `depends_on` | Cross-tree dependencies with their known versions. Uses logical names. Supports `filter` for external dependencies (see External Dependencies). | Optional |
+| `parent_version` | The version of the parent node this node was written against. | Root node and test nodes have no parent |
+| `subject_version` | The version of the node this test was written against — the `_node.md` in the same directory. | Test nodes only |
+| `depends_on` | Cross-tree dependencies with their known versions. Uses logical names. | Optional |
 | `implements` | Source files generated by this node. Filesystem paths relative to the project root. | Leaf and test nodes |
 
-`depends_on` imports content that is not inherited — it is available only to the node that declares it. If a child node needs the same content, it must declare its own `depends_on`.
+Frontmatter is metadata for the framework — it is not part of the
+node's content and does not participate in inheritance or
+`depends_on`.
 
-`depends_on` may only reference nodes in other branches of the tree or `EXTERNAL/` dependencies. Pointing to an ancestor is redundant — its content is already available via inheritance. Pointing to a descendant creates a circular dependency.
+Content imported via `depends_on` does not propagate to descendant
+nodes. Each node must declare its own `depends_on` for the content
+it needs.
+
+A `depends_on` entry using `ROOT/x/y` imports the `# Public` section
+of the referenced node. An entry using `ROOT/x/y(z)` imports only the `## z` subsection
+of `# Public` of the referenced node — useful when a node needs
+a specific part of the public context rather than all of it.
+
+`depends_on` may only reference nodes in other branches of the tree.
+Pointing to an ancestor would be redundant — its content is already
+available via inheritance. Pointing to a descendant would create a
+circular dependency.
 
 Example — root node:
 
@@ -110,14 +212,12 @@ Example — leaf node with dependencies:
 version: 1
 parent_version: 1
 depends_on:
-  - path: EXTERNAL/celcoin-api
+  - path: ROOT/external/payments-api/create-transfer
     version: 5
-    filter:
-      - "api/onboarding-create-pf*"
-  - path: ROOT/architecture/backend/celcoin-gateway
+  - path: ROOT/architecture/backend/api-gateway
     version: 6
 implements:
-  - internal/configuration/config.go
+  - internal/transfers/transfers.go
 ---
 ```
 
@@ -126,146 +226,81 @@ Example — test node:
 ```yaml
 ---
 version: 1
-parent_version: 2
+subject_version: 2
 implements:
   - internal/configuration/config_test.go
 ---
 ```
 
-The `parent_version` points to the `_node.md` in the same directory — the subject of the test.
-
 ### Body
 
-Every node body starts with a title (`#`) that is the node's logical name.
+The body of a node is divided into top-level sections, each starting
+with a `#` heading. A section ends when the next `#` heading begins
+or the file ends. Two sections have special meaning: the **node name section** and
+the **public section** (`# Public`). All other sections are treated
+as private — not available via inheritance or `depends_on`.
 
-```
-# ROOT
-# ROOT/architecture/api
-# ROOT/architecture/backend/config
-```
+#### Node name section
 
-After the title, the body follows this structure. Only Intent is required — all other sections are optional.
+Must be the first section in the file, immediately after the
+frontmatter — nothing may appear between the frontmatter and this
+heading. The heading is the node's logical name (e.g.
+`# ROOT/architecture/backend/config`). Its content serves as
+intent — what this node does and why it exists. This section is
+not available to other nodes.
 
-```markdown
-## Intent
-What this node does and why it exists.
+#### Public section
 
-## Context
-Information that cannot be derived from the parent nodes and is
-needed to understand this node. Do not repeat or summarize content
-from ancestor nodes — their content is always available.
+Everything under `# Public` is available to other nodes:
+- Inherited automatically by all descendant nodes.
+- Imported by nodes that declare `depends_on: ROOT/x/y`.
 
-## Contracts
-Public interfaces. Inputs, outputs, events.
-For leaf nodes: function signatures, types, API contracts.
+Content is free-form. Any `##` subsection within `# Public` can be
+imported individually via `depends_on: ROOT/x/y(subsection)`.
 
-## Constraints
-Rules that all children of this node must respect.
-Non-functional requirements scoped to this subtree.
+Useful public subsections include:
+- **`## Interface`** — types, function signatures, error codes.
+- **`## Context`** — information needed to understand this node.
+- **`## Constraints`** — rules that dependents must respect.
 
-## Decisions
-Decisions made at this node and their rationale.
-What was considered and discarded.
-```
+#### Private sections
 
-Test nodes use a different body structure. These sections are optional but recommended:
+All sections other than the node name and `# Public` are private.
+Useful private subsections include:
+- **`## Implementation`** — step-by-step logic and handler details
+  for the source files listed in `implements`.
+- **`## Decisions`** — choices made and what was discarded.
+- **`## Rationale`** — deeper reasoning behind decisions.
 
-```markdown
-## Context
-Information needed to understand the test scenarios. Do not repeat
-or summarize content from ancestor nodes — their content is always
-available.
+#### Test node body
 
-## Happy Path
-Expected behavior under normal conditions.
+Nothing in a test node is available to other nodes. Content is
+free-form.
 
-## Edge Cases
-Boundary conditions, limits, unusual but valid inputs.
-
-## Failure Cases
-Invalid inputs, constraint violations, expected errors.
-```
-
-## External Dependencies
-
-External dependencies represent knowledge that lives outside the project — third-party APIs, shared libraries, databases owned by other teams.
-
-### Location
-
-Each external dependency is a folder under `external/`.
-
-### Logical names
-
-The logical name of an external dependency is `EXTERNAL/` followed by the folder name — e.g., folder `database/` becomes `EXTERNAL/database`.
-
-### Contents
-
-#### _external.md
-
-Every dependency folder must contain an `_external.md` at its root. It is the entry point — the only file with a controlled format.
-
-Frontmatter contains a single field:
-
-```yaml
 ---
-version: 1
----
-```
-
-See Versioning and Staleness for when to increment `version`. External dependencies do not support `depends_on` by design — they are independent of each other and of the spec tree.
-
-The body starts with a title using the dependency's logical name:
-
-```markdown
-# EXTERNAL/dependency-name
-```
-
-#### Other files
-
-The folder may contain any supporting files and subfolders — imported artifacts, API docs, reference material — organized freely.
-
-### Referencing
-
-Externals are referenced via `depends_on`, using the dependency's logical name as path:
-
-```yaml
-depends_on:
-  - path: EXTERNAL/database
-    version: 5
-```
-
-This imports the contents of the dependency's `_external.md` and all files in its folder.
-
-When only a subset of files is needed, use `filter` — an array of glob patterns relative to the dependency folder:
-
-```yaml
-depends_on:
-  - path: EXTERNAL/celcoin-api
-    version: 5
-    filter:
-      - "api/onboarding-create-pf*"
-      - "reference/security*"
-```
-
-Filters are additive — a file matching any pattern is imported. The `_external.md` is always imported regardless of filter.
 
 ## Versioning and Staleness
 
-Every versioned file has a `version` field in its YAML frontmatter. Version numbers are integers.
+Every versioned file has a `version` field in its YAML frontmatter.
+Version numbers are integers.
 
 ### Which files are versioned
 
 | File | Location |
 |---|---|
-| Spec node | `spec/**/_node.md` |
-| Test node | `spec/**/*.test.md` |
-| External dependency | `external/**/_external.md` |
+| Spec node | `code-from-spec/**/_node.md` |
+| Test node | `code-from-spec/**/*.test.md` |
 
 ### When to increment the version field
 
-The version field must be incremented on every change to the file — no exceptions. A single added space, a corrected typo, a reformatted line, a bumped dependency version in the frontmatter — all require a version increment. The rule is mechanical: if computing a hash of the file before and after the change would produce different results, the version must change. Semantic significance is irrelevant. Never decide that a change is "too small" to warrant a version increment.
-
-For external dependencies, the rule extends beyond the `_external.md` itself: any change to any file in the dependency folder requires incrementing the version in `_external.md`.
+The `version` field must be incremented on every change to the
+file — no exceptions. A single added space, a corrected typo, a
+reformatted line, a bumped dependency version in the frontmatter —
+all require a version increment. The rule is mechanical: if
+computing a hash of the file before and after the change would
+produce different results, the version must change. Semantic
+significance is irrelevant. Never decide that a change is "too
+small" to warrant a version increment.
 
 ### How to increment
 
@@ -273,17 +308,18 @@ Add 1 to the current value. Version 3 becomes 4, not 5 or 10.
 
 ### What is staleness
 
-"A file is stale when it references a version that is no longer current — meaning something it depends on has changed since it was last updated." Staleness is never declared — it is always calculated by comparing declared versions against current versions.
+A file is stale when it references a version that is no longer
+current — meaning something it depends on has changed since it was
+last updated. Staleness is never declared — it is always
+calculated by comparing declared versions against current versions.
 
 ### Which files can become stale
 
 | File | Stale when |
 |---|---|
 | Spec node (`_node.md`) | Parent or dependency version changed |
-| Test node (`*.test.md`) | Parent or dependency version changed. The parent of a test node is the `_node.md` in the same directory. |
-| Generated source file | Node version changed since last generation |
-
-External dependencies do not become stale — they are external sources of truth. When they change, the nodes that depend on them become stale.
+| Test node (`*.test.md`) | Subject or dependency version changed |
+| Generated source file | The node that implements it has changed version since last generation |
 
 ### How to determine if a file is stale
 
@@ -294,75 +330,115 @@ parent.version != node.parent_version
 depends_on[x].current_version != node.depends_on[x].version
 ```
 
-For test nodes, the parent is the `_node.md` in the same directory.
+For test nodes, replace `parent_version` with `subject_version`.
 
 A generated source file is stale when:
 
 ```
-node.version != version in the file's // spec: comment
+node.version != version in the file's spec comment
 ```
 
-Staleness verification is automated by the `staleness-check` tool. The tool reports stale items in a fixed order: spec nodes first (top-down), then test nodes, then generated source files.
+Staleness verification is automated by the `staleness-check` tool.
+The tool reports stale items in a fixed order: spec nodes first
+(top-down), then test nodes, then generated source files.
 
-### Resolution
+### Staleness Resolution
 
-Resolving staleness means reviewing each stale node in light of how the parent or dependency that triggered the staleness changed, and determining whether the node's own content needs to be updated. The version bump is the consequence of that review, not the act itself. Skipping the content review defeats the purpose of versioning.
+Resolving staleness means reviewing each stale node in light of
+how the parent or dependency that triggered the staleness changed,
+and determining whether the node's own content needs to be updated.
+The version bump is the consequence of that review, not the act
+itself. Skipping the content review defeats the purpose of versioning.
 
-The resolution process is iterative: call `staleness-check`, address the first item it reports, call the tool again, repeat. Because the tool reports top-down, resolving a parent before its children avoids cascading rework. If a resolution introduces ambiguity or requires human judgment, stop and consult the user.
+The resolution process is iterative: call `staleness-check`, address
+the first item it reports, call the tool again, repeat. Because the
+tool reports top-down, resolving a parent before its children avoids
+cascading rework. If a resolution introduces ambiguity or requires
+human judgment, stop and consult the user.
 
-The three layers of staleness must be resolved in strict sequence:
+Spec node staleness must be resolved before test node staleness.
+Both must be clean before generating code (see Code Generation) —
+generating from stale specs is wasteful, as the output will be
+stale before it is written.
 
-1. **Spec nodes** — all spec nodes must be clean before proceeding.
-2. **Test nodes** — all test nodes must be clean before proceeding.
-3. **Generated source files** — resolved during Resync (see below).
-
-Generating code from stale spec or test nodes is wasteful — the output will be stale before it is written.
+---
 
 ## Code Generation
 
-The orchestrator dispatches a code generation subagent for each stale source file. The subagent receives a self-contained set of instructions and a structured input — it does not explore the filesystem or read anything beyond what it receives. The orchestrator is responsible for assembling the correct input; if the input is wrong or incomplete, the subagent's output will be wrong.
+An **orchestrator** dispatches a code generation subagent for each
+stale source file. The subagent receives a self-contained set of
+instructions and a structured input — ideally, it does not explore the
+filesystem or read anything beyond what it receives. The
+orchestrator is responsible for assembling the correct input; if
+the input is wrong or incomplete, the subagent's output will be
+wrong.
 
-The orchestrator assembles the context for each subagent by building the **chain** — the ordered sequence of ancestor `_node.md` files from root to the target leaf node, followed by any `depends_on` content.
+The orchestrator assembles the context for each subagent by
+building the **chain** — the public content of each ancestor from
+root to the target node, followed by the target node in full
+(public and private), followed by the target node's `depends_on`
+content.
 
-For spec `depends_on`: the referenced node file. For external `depends_on`: the `_external.md` plus all files in the dependency folder (filtered by `filter` if specified).
+`depends_on` entries from the target node are appended in
+alphabetical order by physical path. What is imported depends on
+the reference:
+- `ROOT/x/y` — `# Public` section of the referenced node.
+- `ROOT/x/y(z)` — `## z` subsection of `# Public` only.
 
 Example — implementing `ROOT/payments/fees/calculation`:
 
 ```
-ROOT                          (spec/_node.md)
-ROOT/payments                 (spec/payments/_node.md)
-ROOT/payments/fees            (spec/payments/fees/_node.md)
-ROOT/payments/fees/calculation (spec/payments/fees/calculation/_node.md)
-EXTERNAL/database             (_external.md + schema.sql)
+ROOT                           (code-from-spec/_node.md)                              [# Public]
+ROOT/payments                  (code-from-spec/payments/_node.md)                     [# Public]
+ROOT/payments/fees             (code-from-spec/payments/fees/_node.md)                [# Public]
+ROOT/payments/fees/calculation (code-from-spec/payments/fees/calculation/_node.md)    [full]
+ROOT/external/database         (code-from-spec/external/database/_node.md)            [# Public]
 ```
 
-For test nodes, the chain extends the leaf node's chain:
+For test nodes, the subject node is included with only its
+`# Public` section, followed by the test node in full. `depends_on`
+entries from the test node are appended in alphabetical order:
 
 ```
-ROOT                          (spec/_node.md)
-ROOT/payments                 (spec/payments/_node.md)
-ROOT/payments/fees            (spec/payments/fees/_node.md)
-ROOT/payments/fees/calculation (spec/payments/fees/calculation/_node.md)
-EXTERNAL/database             (_external.md + schema.sql)    ← leaf's depends_on
-TEST/payments/fees/calculation (spec/payments/fees/calculation/default.test.md)
-EXTERNAL/fixtures             (_external.md + data.sql)      ← test node's own depends_on
+ROOT                           (code-from-spec/_node.md)                              [# Public]
+ROOT/payments                  (code-from-spec/payments/_node.md)                     [# Public]
+ROOT/payments/fees             (code-from-spec/payments/fees/_node.md)                [# Public]
+ROOT/payments/fees/calculation (code-from-spec/payments/fees/calculation/_node.md)    [# Public]
+TEST/payments/fees/calculation (code-from-spec/payments/fees/calculation/default.test.md) [full]
+ROOT/external/database         (code-from-spec/external/database/_node.md)            [# Public]
 ```
 
-The leaf node's `depends_on` content is included implicitly — the test node depends fundamentally on its test subject. The test node's own `depends_on` covers only what the test node needs beyond that.
+The chain is the complete context. Nothing outside the chain is
+needed. Nothing inside the chain is redundant.
 
-The chain is the complete context. Nothing outside the chain is needed. Nothing inside the chain is redundant.
+### Spec comment
 
-See Resources for the agent's instruction file URL.
+Every generated file must contain the string:
 
-## Resync
+```
+code-from-spec: <name>@v<version>
+```
 
-A resync synchronizes generated source files with the current state of the spec. Run a resync when a spec changes, an external dependency changes, or a full regeneration is needed.
+where `<name>` is the target node's logical name and `<version>` is
+the `version` field from the target's frontmatter.
 
-Before running a resync, all spec and test node staleness must be resolved (see Staleness Resolution).
+The spec comment is placed inside a comment as early in the file
+as the language allows. The comment syntax does not matter — `//`,
+`#`, `/* */`, `--`, or any other form is fine. What matters is that
+`code-from-spec: <name>@v<version>` appears in the file.
 
-1. **Generate code** — call `staleness-check`. Dispatch a code generation subagent for the first stale file it reports (see Resources), then call the tool again. Repeat until no stale files remain.
+---
 
-2. **Verify** — build and run tests. If anything fails, trace back to the spec and correct it. Do not patch the generated code.
+## Path Separator
+
+All paths in the framework use forward slash (`/`) as the
+separator, regardless of the operating system. This applies to
+logical names, `implements` entries, and file paths in the chain.
+Backslash (`\`) is never used as a separator. Tools that interact
+with the OS filesystem must normalize paths to forward slashes
+before returning or comparing them.
+
+---
 
 ## Resources
 
@@ -371,4 +447,5 @@ External resources required to operate this framework:
 | Resource | URL |
 |---|---|
 | Code generation with subagents | https://raw.githubusercontent.com/CodeFromSpec/framework/main/rules/CODE_GENERATION.md |
-| `staleness-check` tool | https://github.com/CodeFromSpec/tool-staleness-check/releases/tag/v1.0.2 |
+| `staleness-check` tool | https://github.com/CodeFromSpec/tool-staleness-check/releases/latest |
+| `subagent-mcp` tool | https://github.com/CodeFromSpec/tool-subagent-mcp/releases/latest |

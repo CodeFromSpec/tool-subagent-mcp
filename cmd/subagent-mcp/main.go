@@ -1,4 +1,5 @@
-// spec: ROOT/tech_design/server@v41
+// code-from-spec: ROOT/tech_design/server@v47
+// spec: ROOT/tech_design/server@v47
 package main
 
 import (
@@ -6,8 +7,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/CodeFromSpec/tool-subagent-mcp/internal/load_chain"
-	"github.com/CodeFromSpec/tool-subagent-mcp/internal/write_file"
+	"github.com/CodeFromSpec/tool-subagent-mcp/v2/internal/load_chain"
+	"github.com/CodeFromSpec/tool-subagent-mcp/v2/internal/patch_file"
+	"github.com/CodeFromSpec/tool-subagent-mcp/v2/internal/write_file"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -22,6 +24,7 @@ subagents.
 Tools:
   load_chain     Load the spec chain for a node.
   write_file     Write a generated file to disk.
+  patch_file     Apply a unified diff to an existing file.
 
 The subagent should have no other tools available — no file
 read, write, or search capabilities beyond what this server
@@ -60,7 +63,7 @@ func main() {
 
 	// Step 4: Register tools.
 	// Tool names and descriptions come from the corresponding tool
-	// definition specs (load_chain and write_file).
+	// definition specs (load_chain, write_file, patch_file).
 
 	// Register load_chain — loads the spec chain for a given
 	// logical name and returns all relevant spec files concatenated.
@@ -78,6 +81,15 @@ func main() {
 		Name:        "write_file",
 		Description: "Write a generated source file to disk. The path must be one of the files declared in the node's implements list. Overwrites existing content.",
 	}, write_file.HandleWriteFile)
+
+	// Register patch_file — applies a unified diff to an existing
+	// source file, validating the path against the node's implements
+	// list. The file must already exist; use write_file to create new
+	// files.
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "patch_file",
+		Description: "Apply a unified diff to an existing source file. The path must be one of the files declared in the node's implements list. The file must already exist.",
+	}, patch_file.HandlePatchFile)
 
 	// Step 5–7: Run the server over stdio. Blocks until the client
 	// disconnects. If Run returns an error, print it and exit 1.

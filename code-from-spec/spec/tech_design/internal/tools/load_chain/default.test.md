@@ -1,6 +1,6 @@
 ---
-version: 10
-parent_version: 49
+version: 14
+parent_version: 54
 implements:
   - internal/load_chain/load_chain_test.go
 ---
@@ -14,33 +14,53 @@ structure with the necessary spec files. The working directory
 is changed to the temp dir for the duration of the test so that
 path validation resolves correctly.
 
+Spec files in tests must have valid CommonMark body structure:
+frontmatter followed by `# <logical name>` heading, optionally
+`# Public` with `##` subsections, and private sections.
+
 ## Happy Path
 
 ### Valid ROOT/ leaf node
 
 Create a spec tree: `ROOT` and `ROOT/a` (leaf with
-`implements` and no dependencies). Call `handleLoadChain`
-with `LogicalName: "ROOT/a"`.
+`implements` and no dependencies). Both have `# Public`
+sections. Call `handleLoadChain` with
+`LogicalName: "ROOT/a"`.
 
-Expect: success result. Text contains the chain content
-with files from `ROOT` and `ROOT/a`.
+Expect: success result. Chain content contains:
+- `ROOT` with only its `# Public` section content
+- `ROOT/a` with reduced frontmatter and full body
 
 ### Valid TEST/ node
 
-Create a spec tree: `ROOT`, `ROOT/a` (leaf), and `TEST/a`.
-Call `handleLoadChain` with `LogicalName: "TEST/a"`.
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with `# Public`),
+and `TEST/a`. Call `handleLoadChain` with
+`LogicalName: "TEST/a"`.
 
-Expect: success result.
+Expect: success result. `ROOT` and `ROOT/a` contain only
+their `# Public` sections. `TEST/a` contains reduced
+frontmatter and full body.
 
-### Node with dependencies
+### Node with ROOT/ dependency, no qualifier
 
 Create a spec tree: `ROOT`, `ROOT/a` (leaf with `depends_on`
-referencing `EXTERNAL/db`). Create the external dependency
-with `_external.md` and a data file. Call `handleLoadChain`
+referencing `ROOT/b`), `ROOT/b` (with `# Public` containing
+`## Interface` and `## Constraints`). Call `handleLoadChain`
 with `LogicalName: "ROOT/a"`.
 
-Expect: success result. Chain content contains all files
-from the chain including the external dependency files.
+Expect: success result. The dependency `ROOT/b` section
+contains only its `# Public` content (both subsections).
+
+### Node with ROOT/ dependency, with qualifier
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with `depends_on`
+referencing `ROOT/b(interface)`), `ROOT/b` (with `# Public`
+containing `## Interface` and `## Constraints`). Call
+`handleLoadChain` with `LogicalName: "ROOT/a"`.
+
+Expect: success result. The dependency `ROOT/b` section
+contains only the `## Interface` subsection content, not
+`## Constraints`.
 
 ### Chain content uses heredoc format
 
@@ -51,39 +71,27 @@ Create a spec tree: `ROOT` and `ROOT/a` (leaf with
 Expect: success result. Text contains `<<<FILE_` and
 `<<<END_FILE_` delimiters with `node:` and `path:` headers.
 
-### Repeated calls succeed
+### Ancestors contain only # Public
+
+Create a spec tree: `ROOT` (with `# Public` and private
+sections), `ROOT/a`, `ROOT/a/b` (leaf with `implements`).
+Call `handleLoadChain` with `LogicalName: "ROOT/a/b"`.
+
+Expect: the sections for `ROOT` and `ROOT/a` contain only
+their `# Public` content. Private sections and node name
+sections are not present.
+
+### Target has reduced frontmatter
 
 Create a spec tree: `ROOT` and `ROOT/a` (leaf with
-`implements`). Call `handleLoadChain` twice with the
-same `LogicalName`.
-
-Expect: both calls return success with non-empty chain
-content. Content may differ between calls because a new
-UUID is generated each time.
-
-### Frontmatter stripped from non-target files
-
-Create a spec tree: `ROOT` (with frontmatter containing
-`version: 1`) and `ROOT/a` (leaf with `implements` and
-frontmatter containing `version: 2`). Call `handleLoadChain`
-with `LogicalName: "ROOT/a"`.
-
-Expect: success result. The file section for `ROOT` does not
-contain the YAML frontmatter delimiters (`---`) or `version`.
-The file section for `ROOT/a` (the target) preserves the
-full frontmatter.
-
-### Frontmatter stripped from dependency files
-
-Create a spec tree: `ROOT`, `ROOT/a` (leaf with `depends_on`
-referencing `EXTERNAL/db`). Create the external dependency
-with `_external.md` (containing frontmatter with `version: 1`)
-and a data file. Call `handleLoadChain` with
+`version: 5`, `parent_version: 1`,
+`depends_on: [{path: ROOT/b, version: 2}]`,
+`implements: ["src/a.go"]`). Call `handleLoadChain` with
 `LogicalName: "ROOT/a"`.
 
-Expect: success result. The file section for
-`_external.md` does not contain the YAML frontmatter. The
-target node's frontmatter is preserved.
+Expect: the target section contains frontmatter with only
+`version: 5` and `implements: ["src/a.go"]`. The fields
+`parent_version` and `depends_on` are not present.
 
 ### Existing code files included in output
 
@@ -104,12 +112,22 @@ Call `handleLoadChain` with `LogicalName: "ROOT/a"`.
 Expect: success result. Chain content does not contain a
 file section for `src/a.go`.
 
+### Ancestor with no # Public section
+
+Create a spec tree: `ROOT` (with no `# Public` — only node
+name and private sections) and `ROOT/a` (leaf with
+`implements`). Call `handleLoadChain` with
+`LogicalName: "ROOT/a"`.
+
+Expect: success result. The section for `ROOT` is included
+but with empty content.
+
 ## Failure Cases
 
 ### Invalid prefix
 
 Call `handleLoadChain` with
-`LogicalName: "EXTERNAL/something"`.
+`LogicalName: "INVALID/something"`.
 
 Expect: tool error containing `"target must be a
 ROOT/ or TEST/"`.

@@ -1,6 +1,6 @@
 ---
-version: 9
-parent_version: 10
+version: 10
+parent_version: 11
 implements:
   - internal/pathvalidation/pathvalidation_test.go
 ---
