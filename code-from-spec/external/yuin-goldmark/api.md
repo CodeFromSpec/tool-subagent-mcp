@@ -90,8 +90,9 @@ lines.At(i)          // returns text.Segment at index i
 ```
 
 For an ATX heading (`# Foo`), `Lines()` contains one segment
-covering the heading line in the source, **including** the `#`
-prefix.
+covering only the heading **text content** — it does **not**
+include the `#` prefix or the space after it. For `# Foo`,
+`Lines().At(0).Start` points to `F`, not `#`.
 
 ## text.Segment
 
@@ -143,14 +144,31 @@ two headings), use the byte offsets from `Lines()`:
 
 - **Start of a heading's content**: the `Stop` of the heading's
   `Lines().At(0)` segment (first byte after the heading line).
-- **End of a section**: the `Start` of the next heading's
-  `Lines().At(0)` segment, or `len(source)` if there is no
-  next heading.
+- **Start of a heading's line**: since `Lines().At(0).Start`
+  points to the text content (after `# `), not the `#` itself,
+  scan backward through the source to find the preceding `\n`.
+  The byte after that `\n` is the start of the heading line.
+  If no `\n` is found, the heading is at the start of the
+  source (offset 0).
+- **End of a section**: the start of the next heading's line
+  (as described above), or `len(source)` if there is no next
+  heading.
 
 ```go
+// headingLineStart returns the byte offset where the heading
+// line begins in source (the # character). It scans backward
+// from the text content start to find the preceding newline.
+func headingLineStart(h *ast.Heading, source []byte) int {
+	pos := h.Lines().At(0).Start
+	for pos > 0 && source[pos-1] != '\n' {
+		pos--
+	}
+	return pos
+}
+
 // Content between headingA and headingB:
 start := headingA.Lines().At(0).Stop
-stop := headingB.Lines().At(0).Start
+stop := headingLineStart(headingB, source)
 content := source[start:stop]
 ```
 

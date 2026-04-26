@@ -1,11 +1,11 @@
 ---
-version: 30
+version: 31
 parent_version: 12
 depends_on:
   - path: EXTERNAL/codefromspec
     version: 3
   - path: EXTERNAL/yuin-goldmark
-    version: 2
+    version: 3
   - path: ROOT/tech_design/internal/logical_names
     version: 28
   - path: ROOT/tech_design/internal/normalizename
@@ -130,17 +130,21 @@ For each section, extract:
   heading (see "Extracting heading text" in
   `EXTERNAL/yuin-goldmark`) and apply `normalizename.NormalizeName`.
 - **Content** — the raw source bytes between the end of the
-  level-1 heading and the start of the first level-2 heading
-  within the section (or the start of the next level-1 heading
-  / end of document if there are no level-2 headings).
+  level-1 heading and the start of the line of the first
+  level-2 heading within the section (or the start of the line
+  of the next level-1 heading / end of document if there are
+  no level-2 headings). Use "Extracting raw source between
+  headings" in `EXTERNAL/yuin-goldmark` to determine heading
+  line boundaries.
 - **Subsections** — each level-2 heading within the section
   starts a subsection. A subsection's heading is obtained by
   extracting the inline text content of the level-2 heading
   (see "Extracting heading text" in `EXTERNAL/yuin-goldmark`)
   and applying `normalizename.NormalizeName`. A
   subsection's content is the raw source bytes between the end
-  of the level-2 heading and the start of the next level-2
-  heading, the next level-1 heading, or the end of document.
+  of the level-2 heading and the start of the line of the next
+  level-2 heading, the next level-1 heading, or the end of
+  document.
 
 Leading and trailing blank lines in content are trimmed.
 

@@ -1,5 +1,5 @@
 ---
-version: 3
+version: 4
 parent_version: 5
 depends_on:
   - path: EXTERNAL/bluekeyes-go-gitdiff
@@ -94,14 +94,22 @@ func HandlePatchFile(
    not exist, return a tool error:
    `"file does not exist: <path>"`.
 9. Parse the unified diff from `args.Diff` using
-   `gitdiff.Parse`. If parsing fails, return a tool error:
-   `"failed to parse diff: <err>"`.
+   `gitdiff.Parse`. If parsing fails (e.g. the diff is
+   semantically invalid), return a tool error:
+   `"failed to parse diff: <err>"`. Note: completely
+   malformed input that `gitdiff.Parse` cannot interpret
+   as a diff will result in zero file entries (no error),
+   which is caught by step 10.
 10. The parse result must contain exactly one file entry.
     If it contains zero or more than one, return a tool error:
-    `"diff must contain exactly one file"`.
+    `"diff must contain exactly one file"`. This also covers
+    diffs that are so malformed that `gitdiff.Parse` produces
+    no file entries.
 11. Apply the patch to the file content using `gitdiff.Apply`.
     If application fails, return a tool error:
-    `"failed to apply diff to <path>: <err>"`.
+    `"failed to apply diff to <path>: <err>"`. Note: context
+    mismatches between the diff and the file may be caught
+    by `gitdiff.Parse` (step 9) rather than `gitdiff.Apply`.
 12. Write the patched content back to the file, overwriting
     the original.
 13. Return a success result with text `"patched <path>"`.
@@ -117,12 +125,14 @@ func HandlePatchFile(
   <path>. allowed paths: <list>"`.
 - File does not exist → tool error:
   `"file does not exist: <path>"`.
-- Diff parse failure → tool error:
-  `"failed to parse diff: <err>"`.
-- Diff has wrong number of files → tool error:
+- Diff parse failure (semantic error from `gitdiff.Parse`) →
+  tool error: `"failed to parse diff: <err>"`.
+- Diff has wrong number of files (including malformed input
+  that produces zero entries) → tool error:
   `"diff must contain exactly one file"`.
 - Apply failure → tool error:
-  `"failed to apply diff to <path>: <err>"`.
+  `"failed to apply diff to <path>: <err>"`. Context
+  mismatches may surface as parse errors (step 9) instead.
 - Write failure → tool error:
   `"failed to write <path>: <err>"`.
 

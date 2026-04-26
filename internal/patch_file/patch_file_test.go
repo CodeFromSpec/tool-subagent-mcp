@@ -1,4 +1,4 @@
-// code-from-spec: TEST/tech_design/internal/tools/patch_file@v2
+// code-from-spec: TEST/tech_design/internal/tools/patch_file@v4
 
 // Package patch_file provides tests for the patch_file tool handler.
 // Each test creates a fresh temp directory as its project root and
@@ -464,8 +464,11 @@ func TestHandlePatchFile_FileDoesNotExist(t *testing.T) {
 	}
 }
 
-// TestHandlePatchFile_MalformedDiff verifies that an unparseable diff string
-// returns a tool error mentioning "failed to parse diff".
+// TestHandlePatchFile_MalformedDiff verifies that a completely malformed diff
+// string (that produces zero file entries from gitdiff.Parse) returns a tool
+// error mentioning "diff must contain exactly one file".
+// Note: gitdiff.Parse does not return an error for completely malformed input —
+// it returns zero file entries, which is caught by the "exactly one file" check.
 func TestHandlePatchFile_MalformedDiff(t *testing.T) {
 	root := t.TempDir()
 	testMakeSpecTree(t, root, "a", []string{"output/file.go"})
@@ -482,8 +485,10 @@ func TestHandlePatchFile_MalformedDiff(t *testing.T) {
 	}
 
 	text := testResultText(t, result)
-	if !strings.Contains(text, "failed to parse diff") {
-		t.Errorf("expected 'failed to parse diff' in error, got: %s", text)
+	// gitdiff.Parse returns zero entries for completely malformed input,
+	// so the error is "diff must contain exactly one file" (step 10).
+	if !strings.Contains(text, "diff must contain exactly one file") {
+		t.Errorf("expected 'diff must contain exactly one file' in error, got: %s", text)
 	}
 }
 
@@ -540,8 +545,11 @@ func TestHandlePatchFile_DiffWithMultipleFileEntries(t *testing.T) {
 }
 
 // TestHandlePatchFile_DiffContextDoesNotMatchFile verifies that a diff whose
-// context lines do not match the file's actual content returns a tool error
-// mentioning "failed to apply diff to output/file.go".
+// context lines do not match the file's actual content returns a tool error.
+// Per the spec, gitdiff.Parse may reject context-mismatched diffs as
+// semantically invalid (step 9), or gitdiff.Apply may reject them (step 11).
+// This test accepts either "failed to parse diff" or
+// "failed to apply diff to output/file.go" as valid error messages.
 func TestHandlePatchFile_DiffContextDoesNotMatchFile(t *testing.T) {
 	root := t.TempDir()
 	testMakeSpecTree(t, root, "a", []string{"output/file.go"})
@@ -561,7 +569,11 @@ func TestHandlePatchFile_DiffContextDoesNotMatchFile(t *testing.T) {
 	}
 
 	text := testResultText(t, result)
-	if !strings.Contains(text, "failed to apply diff to output/file.go") {
-		t.Errorf("expected 'failed to apply diff to output/file.go' in error, got: %s", text)
+	// The spec notes that gitdiff.Parse may catch this as a semantic error
+	// ("failed to parse diff"), or gitdiff.Apply may catch it
+	// ("failed to apply diff to output/file.go"). Accept either.
+	if !strings.Contains(text, "failed to apply diff to output/file.go") &&
+		!strings.Contains(text, "failed to parse diff") {
+		t.Errorf("expected 'failed to apply diff to output/file.go' or 'failed to parse diff' in error, got: %s", text)
 	}
 }

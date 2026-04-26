@@ -1,4 +1,4 @@
-// spec: ROOT/tech_design/internal/tools/patch_file@v3
+// code-from-spec: ROOT/tech_design/internal/tools/patch_file@v4
 
 // Package patch_file implements the patch_file MCP tool handler.
 // It applies a unified diff to an existing file, after validating
@@ -118,17 +118,22 @@ func HandlePatchFile(
 	}
 
 	// Step 9: Parse the unified diff provided by the caller.
+	// Note: completely malformed input that gitdiff.Parse cannot interpret as a diff
+	// will result in zero file entries (no error), which is caught by step 10.
 	files, _, err := gitdiff.Parse(strings.NewReader(args.Diff))
 	if err != nil {
 		return toolError(fmt.Sprintf("failed to parse diff: %v", err))
 	}
 
 	// Step 10: The diff must target exactly one file — no more, no less.
+	// This also catches malformed diffs that produce zero entries.
 	if len(files) != 1 {
 		return toolError("diff must contain exactly one file")
 	}
 
 	// Step 11: Apply the patch to the existing file content.
+	// Note: context mismatches may be caught by gitdiff.Parse (step 9) rather
+	// than gitdiff.Apply.
 	source := bytes.NewReader(existingContent)
 	var output bytes.Buffer
 	if err := gitdiff.Apply(&output, source, files[0]); err != nil {

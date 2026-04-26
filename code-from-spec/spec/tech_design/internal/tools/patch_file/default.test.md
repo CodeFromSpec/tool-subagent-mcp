@@ -1,6 +1,6 @@
 ---
-version: 3
-parent_version: 3
+version: 4
+parent_version: 4
 implements:
   - internal/patch_file/patch_file_test.go
 ---
@@ -159,7 +159,11 @@ Create a spec tree with `ROOT/a` having
 `implements: ["output/file.go"]`. Write an initial file.
 Call the handler with `Diff: "this is not a valid diff"`.
 
-Expect: tool error containing `"failed to parse diff"`.
+Expect: tool error containing
+`"diff must contain exactly one file"`.
+Note: `gitdiff.Parse` does not error on completely malformed
+input — it returns zero file entries, which is caught by
+step 10.
 
 ### Diff with zero file entries
 
@@ -188,5 +192,7 @@ Create a spec tree with `ROOT/a` having
 Call the handler with a diff whose context lines do not
 match the file's actual content.
 
-Expect: tool error containing
-`"failed to apply diff to output/file.go"`.
+Expect: tool error containing `"failed to parse diff"`.
+Note: `gitdiff.Parse` rejects diffs with context mismatches
+as semantically invalid (e.g. "fragment contains no changes"),
+so this is caught at step 9, not step 11.

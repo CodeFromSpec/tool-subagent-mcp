@@ -1,5 +1,5 @@
 ---
-version: 53
+version: 54
 parent_version: 5
 depends_on:
   - path: EXTERNAL/google-uuid
@@ -15,7 +15,7 @@ depends_on:
   - path: ROOT/tech_design/internal/normalizename
     version: 2
   - path: ROOT/tech_design/internal/parsenode
-    version: 30
+    version: 31
   - path: ROOT/tech_design/internal/pathvalidation
     version: 11
 implements:
