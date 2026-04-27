@@ -1,4 +1,4 @@
-// code-from-spec: ROOT/tech_design/internal/parsenode@v31
+// code-from-spec: ROOT/tech_design/internal/parsenode@v32
 
 // Package parsenode parses the body of a spec node file and returns
 // a structured representation of all sections.

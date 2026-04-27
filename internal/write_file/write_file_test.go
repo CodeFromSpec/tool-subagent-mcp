@@ -1,4 +1,4 @@
-// code-from-spec: TEST/tech_design/internal/tools/write_file@v7
+// code-from-spec: TEST/tech_design/internal/tools/write_file@v8
 package write_file
 
 import (
@@ -12,10 +12,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// setupSpecTree creates a minimal spec tree inside tmpDir with a single node
-// whose frontmatter contains the given implements list. It returns the
-// logical name "ROOT/a".
-func setupSpecTree(t *testing.T, tmpDir string, implements []string) {
+// testSetupSpecTree creates a minimal spec tree inside tmpDir with a single
+// node whose frontmatter contains the given implements list. The logical
+// name of the created node is "ROOT/a".
+func testSetupSpecTree(t *testing.T, tmpDir string, implements []string) {
 	t.Helper()
 
 	// Build the implements YAML list.
@@ -26,8 +26,8 @@ func setupSpecTree(t *testing.T, tmpDir string, implements []string) {
 
 	content := "---\nversion: 1\nimplements:\n" + implLines + "---\n\n# ROOT/a\n"
 
-	// ROOT/a maps to code-from-spec/spec/a/_node.md
-	nodeDir := filepath.Join(tmpDir, "code-from-spec", "spec", "a")
+	// ROOT/a maps to code-from-spec/a/_node.md per PathFromLogicalName.
+	nodeDir := filepath.Join(tmpDir, "code-from-spec", "a")
 	if err := os.MkdirAll(nodeDir, 0o755); err != nil {
 		t.Fatalf("failed to create spec dir: %v", err)
 	}
@@ -36,13 +36,12 @@ func setupSpecTree(t *testing.T, tmpDir string, implements []string) {
 	}
 }
 
-// callHandler is a helper that changes to tmpDir, calls HandleWriteFile,
-// and restores the original working directory.
-func callHandler(t *testing.T, tmpDir string, args WriteFileArgs) *mcp.CallToolResult {
+// testCallHandler changes to tmpDir, calls HandleWriteFile, and restores
+// the original working directory. The handler resolves paths against the
+// process working directory (project root).
+func testCallHandler(t *testing.T, tmpDir string, args WriteFileArgs) *mcp.CallToolResult {
 	t.Helper()
 
-	// Save and restore working directory — the handler resolves paths
-	// against the process working directory (project root).
 	origDir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("failed to get working directory: %v", err)
@@ -61,8 +60,8 @@ func callHandler(t *testing.T, tmpDir string, args WriteFileArgs) *mcp.CallToolR
 	return result
 }
 
-// resultText extracts the text content from a CallToolResult.
-func resultText(t *testing.T, result *mcp.CallToolResult) string {
+// testResultText extracts the text content from a CallToolResult.
+func testResultText(t *testing.T, result *mcp.CallToolResult) string {
 	t.Helper()
 	if len(result.Content) == 0 {
 		t.Fatal("result has no content")
@@ -78,9 +77,9 @@ func resultText(t *testing.T, result *mcp.CallToolResult) string {
 
 func TestWritesFileSuccessfully(t *testing.T) {
 	tmpDir := t.TempDir()
-	setupSpecTree(t, tmpDir, []string{"output/file.go"})
+	testSetupSpecTree(t, tmpDir, []string{"output/file.go"})
 
-	result := callHandler(t, tmpDir, WriteFileArgs{
+	result := testCallHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "output/file.go",
 		Content:     "package main",
@@ -88,10 +87,10 @@ func TestWritesFileSuccessfully(t *testing.T) {
 
 	// Expect success.
 	if result.IsError {
-		t.Fatalf("expected success, got error: %s", resultText(t, result))
+		t.Fatalf("expected success, got error: %s", testResultText(t, result))
 	}
 
-	text := resultText(t, result)
+	text := testResultText(t, result)
 	if text != "wrote output/file.go" {
 		t.Errorf("expected %q, got %q", "wrote output/file.go", text)
 	}
@@ -108,16 +107,16 @@ func TestWritesFileSuccessfully(t *testing.T) {
 
 func TestCreatesIntermediateDirectories(t *testing.T) {
 	tmpDir := t.TempDir()
-	setupSpecTree(t, tmpDir, []string{"deep/nested/dir/file.go"})
+	testSetupSpecTree(t, tmpDir, []string{"deep/nested/dir/file.go"})
 
-	result := callHandler(t, tmpDir, WriteFileArgs{
+	result := testCallHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "deep/nested/dir/file.go",
 		Content:     "package nested",
 	})
 
 	if result.IsError {
-		t.Fatalf("expected success, got error: %s", resultText(t, result))
+		t.Fatalf("expected success, got error: %s", testResultText(t, result))
 	}
 
 	// Verify directories were created and file exists.
@@ -132,7 +131,7 @@ func TestCreatesIntermediateDirectories(t *testing.T) {
 
 func TestOverwritesExistingFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	setupSpecTree(t, tmpDir, []string{"output/file.go"})
+	testSetupSpecTree(t, tmpDir, []string{"output/file.go"})
 
 	// Write an initial file at the target path.
 	outDir := filepath.Join(tmpDir, "output")
@@ -144,14 +143,14 @@ func TestOverwritesExistingFile(t *testing.T) {
 	}
 
 	// Overwrite with new content.
-	result := callHandler(t, tmpDir, WriteFileArgs{
+	result := testCallHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "output/file.go",
 		Content:     "new content",
 	})
 
 	if result.IsError {
-		t.Fatalf("expected success, got error: %s", resultText(t, result))
+		t.Fatalf("expected success, got error: %s", testResultText(t, result))
 	}
 
 	// Verify the file was overwritten.
@@ -172,19 +171,19 @@ func TestBackslashPathNormalized(t *testing.T) {
 	}
 
 	tmpDir := t.TempDir()
-	setupSpecTree(t, tmpDir, []string{"output/file.go"})
+	testSetupSpecTree(t, tmpDir, []string{"output/file.go"})
 
-	result := callHandler(t, tmpDir, WriteFileArgs{
+	result := testCallHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "output\\file.go",
 		Content:     "package main",
 	})
 
 	if result.IsError {
-		t.Fatalf("expected success, got error: %s", resultText(t, result))
+		t.Fatalf("expected success, got error: %s", testResultText(t, result))
 	}
 
-	text := resultText(t, result)
+	text := testResultText(t, result)
 	if text != "wrote output/file.go" {
 		t.Errorf("expected %q, got %q", "wrote output/file.go", text)
 	}
@@ -195,7 +194,7 @@ func TestBackslashPathNormalized(t *testing.T) {
 func TestInvalidLogicalNamePrefix(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	result := callHandler(t, tmpDir, WriteFileArgs{
+	result := testCallHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "EXTERNAL/something",
 		Path:        "some/file.go",
 		Content:     "content",
@@ -210,7 +209,7 @@ func TestNonexistentLogicalName(t *testing.T) {
 	tmpDir := t.TempDir()
 	// Do not create any spec file for ROOT/nonexistent.
 
-	result := callHandler(t, tmpDir, WriteFileArgs{
+	result := testCallHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/nonexistent",
 		Path:        "some/file.go",
 		Content:     "content",
@@ -223,9 +222,9 @@ func TestNonexistentLogicalName(t *testing.T) {
 
 func TestPathNotInImplements(t *testing.T) {
 	tmpDir := t.TempDir()
-	setupSpecTree(t, tmpDir, []string{"allowed/file.go"})
+	testSetupSpecTree(t, tmpDir, []string{"allowed/file.go"})
 
-	result := callHandler(t, tmpDir, WriteFileArgs{
+	result := testCallHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "other/file.go",
 		Content:     "content",
@@ -235,7 +234,7 @@ func TestPathNotInImplements(t *testing.T) {
 		t.Fatal("expected tool error for path not in implements")
 	}
 
-	text := resultText(t, result)
+	text := testResultText(t, result)
 	if !strings.Contains(text, "path not allowed") {
 		t.Errorf("expected error to contain %q, got %q", "path not allowed", text)
 	}
@@ -247,9 +246,9 @@ func TestPathNotInImplements(t *testing.T) {
 
 func TestPathTraversalAttempt(t *testing.T) {
 	tmpDir := t.TempDir()
-	setupSpecTree(t, tmpDir, []string{"../../etc/passwd"})
+	testSetupSpecTree(t, tmpDir, []string{"../../etc/passwd"})
 
-	result := callHandler(t, tmpDir, WriteFileArgs{
+	result := testCallHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "../../etc/passwd",
 		Content:     "content",
@@ -262,9 +261,9 @@ func TestPathTraversalAttempt(t *testing.T) {
 
 func TestEmptyPath(t *testing.T) {
 	tmpDir := t.TempDir()
-	setupSpecTree(t, tmpDir, []string{"some/file.go"})
+	testSetupSpecTree(t, tmpDir, []string{"some/file.go"})
 
-	result := callHandler(t, tmpDir, WriteFileArgs{
+	result := testCallHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "",
 		Content:     "content",
@@ -274,7 +273,7 @@ func TestEmptyPath(t *testing.T) {
 		t.Fatal("expected tool error for empty path")
 	}
 
-	text := resultText(t, result)
+	text := testResultText(t, result)
 	if !strings.Contains(text, "path is empty") {
 		t.Errorf("expected error to contain %q, got %q", "path is empty", text)
 	}
@@ -295,9 +294,9 @@ func TestSymlinkEscapingProjectRoot(t *testing.T) {
 	}
 
 	// Set up spec tree with the symlink-based path in implements.
-	setupSpecTree(t, tmpDir, []string{"escape/evil.go"})
+	testSetupSpecTree(t, tmpDir, []string{"escape/evil.go"})
 
-	result := callHandler(t, tmpDir, WriteFileArgs{
+	result := testCallHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "escape/evil.go",
 		Content:     "content",
@@ -307,7 +306,7 @@ func TestSymlinkEscapingProjectRoot(t *testing.T) {
 		t.Fatal("expected tool error for symlink escaping project root")
 	}
 
-	text := resultText(t, result)
+	text := testResultText(t, result)
 	if !strings.Contains(text, "resolves outside project root") {
 		t.Errorf("expected error to contain %q, got %q", "resolves outside project root", text)
 	}

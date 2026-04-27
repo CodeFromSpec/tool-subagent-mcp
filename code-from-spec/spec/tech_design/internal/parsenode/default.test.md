@@ -1,6 +1,6 @@
 ---
-version: 5
-parent_version: 31
+version: 7
+parent_version: 32
 implements:
   - internal/parsenode/parsenode_test.go
 ---
@@ -12,7 +12,7 @@ implements:
 Each test creates files in `t.TempDir()` under the directory
 structure expected by `logicalnames.PathFromLogicalName`. For
 example, a test for logical name `ROOT/x/y` creates the file
-at `<tmpdir>/code-from-spec/spec/x/y/_node.md`. The test must
+at `<tmpdir>/code-from-spec/x/y/_node.md`. The test must
 change the working directory to `<tmpdir>` before calling
 `ParseNode`, and restore it after.
 

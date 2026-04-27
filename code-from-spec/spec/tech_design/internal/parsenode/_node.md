@@ -1,5 +1,5 @@
 ---
-version: 31
+version: 32
 parent_version: 12
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -7,7 +7,7 @@ depends_on:
   - path: EXTERNAL/yuin-goldmark
     version: 3
   - path: ROOT/tech_design/internal/logical_names
-    version: 28
+    version: 29
   - path: ROOT/tech_design/internal/normalizename
     version: 2
 implements:

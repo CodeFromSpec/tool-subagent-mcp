@@ -1,6 +1,6 @@
 ---
-version: 21
-parent_version: 71
+version: 23
+parent_version: 72
 implements:
   - internal/chainresolver/chainresolver_test.go
 ---
@@ -12,6 +12,14 @@ implements:
 Tests use `t.TempDir()` to create an isolated project structure
 with spec nodes and test nodes. Each test builds the minimal
 filesystem needed and calls `ResolveChain`.
+
+Spec files are created at paths matching `logicalnames.PathFromLogicalName`:
+- `ROOT` → `<tmpdir>/code-from-spec/_node.md`
+- `ROOT/a` → `<tmpdir>/code-from-spec/a/_node.md`
+- `TEST/a` → `<tmpdir>/code-from-spec/a/default.test.md`
+
+The working directory must be changed to `<tmpdir>` before calling
+`ResolveChain` and restored after.
 
 File paths in `ChainItem.FilePath` use forward slashes regardless
 of the OS. Test assertions must use forward slashes.

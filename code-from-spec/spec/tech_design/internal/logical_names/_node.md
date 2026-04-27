@@ -1,5 +1,5 @@
 ---
-version: 28
+version: 29
 parent_version: 12
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -45,22 +45,20 @@ to the same path as `ROOT/x`.
 
 | Logical name | File path |
 |---|---|
-| `ROOT` | `code-from-spec/spec/_node.md` |
-| `ROOT/x/y` | `code-from-spec/spec/x/y/_node.md` |
-| `ROOT/x/y(z)` | `code-from-spec/spec/x/y/_node.md` |
-| `TEST` | `code-from-spec/spec/default.test.md` |
-| `TEST/x` | `code-from-spec/spec/x/default.test.md` |
-| `TEST/x(name)` | `code-from-spec/spec/x/name.test.md` |
-| `EXTERNAL/x` | `code-from-spec/external/x/_external.md` |
+| `ROOT` | `code-from-spec/_node.md` |
+| `ROOT/x/y` | `code-from-spec/x/y/_node.md` |
+| `ROOT/x/y(z)` | `code-from-spec/x/y/_node.md` |
+| `TEST` | `code-from-spec/default.test.md` |
+| `TEST/x` | `code-from-spec/x/default.test.md` |
+| `TEST/x(name)` | `code-from-spec/x/name.test.md` |
 
 Rules:
-- `ROOT` → `code-from-spec/spec/_node.md`
-- `ROOT/<path>` → `code-from-spec/spec/<path>/_node.md`
-- `ROOT/<path>(<qualifier>)` → `code-from-spec/spec/<path>/_node.md`
-- `TEST` → `code-from-spec/spec/default.test.md`
-- `TEST/<path>` → `code-from-spec/spec/<path>/default.test.md`
-- `TEST/<path>(<name>)` → `code-from-spec/spec/<path>/<name>.test.md`
-- `EXTERNAL/<name>` → `code-from-spec/external/<name>/_external.md`
+- `ROOT` → `code-from-spec/_node.md`
+- `ROOT/<path>` → `code-from-spec/<path>/_node.md`
+- `ROOT/<path>(<qualifier>)` → `code-from-spec/<path>/_node.md`
+- `TEST` → `code-from-spec/default.test.md`
+- `TEST/<path>` → `code-from-spec/<path>/default.test.md`
+- `TEST/<path>(<name>)` → `code-from-spec/<path>/<name>.test.md`
 
 ### HasParent
 
@@ -76,8 +74,6 @@ the input is a valid logical name.
 | `TEST` | `true` | `true` |
 | `TEST/x` | `true` | `true` |
 | `TEST/x(name)` | `true` | `true` |
-| `EXTERNAL/x` | `false` | `true` |
-| `EXTERNAL` | `false` | `false` |
 | `""` | `false` | `false` |
 
 Rules:
@@ -85,7 +81,6 @@ Rules:
 - `ROOT/<path>` and `ROOT/<path>(<qualifier>)` → has parent
 - `TEST` and `TEST/<path>` and `TEST/<path>(<name>)` →
   has parent (parent is always in the ROOT namespace)
-- `EXTERNAL/<name>` → no parent
 - Anything else → not a valid logical name
 
 ### ParentLogicalName
@@ -130,7 +125,6 @@ indicates whether the input is a valid logical name.
 | `TEST` | `false` | `true` |
 | `TEST/x` | `false` | `true` |
 | `TEST/x(name)` | `true` | `true` |
-| `EXTERNAL/x` | `false` | `true` |
 | `""` | `false` | `false` |
 
 ### QualifierName

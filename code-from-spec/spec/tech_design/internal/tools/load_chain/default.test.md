@@ -1,6 +1,6 @@
 ---
-version: 14
-parent_version: 54
+version: 16
+parent_version: 55
 implements:
   - internal/load_chain/load_chain_test.go
 ---
@@ -13,6 +13,11 @@ Each test uses `t.TempDir()` to create an isolated project
 structure with the necessary spec files. The working directory
 is changed to the temp dir for the duration of the test so that
 path validation resolves correctly.
+
+Spec files are created at paths matching `logicalnames.PathFromLogicalName`:
+- `ROOT` → `<tmpdir>/code-from-spec/_node.md`
+- `ROOT/a` → `<tmpdir>/code-from-spec/a/_node.md`
+- `TEST/a` → `<tmpdir>/code-from-spec/a/default.test.md`
 
 Spec files in tests must have valid CommonMark body structure:
 frontmatter followed by `# <logical name>` heading, optionally
