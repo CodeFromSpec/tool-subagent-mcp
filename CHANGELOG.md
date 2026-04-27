@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/CodeFromSpec/tool-subagent-mcp/compare/v2.0.0...v2.0.1) (2026-04-27)
+
+
+### Bug Fixes
+
+* resolve spec paths for framework v2 (remove /spec subdirectory) ([#15](https://github.com/CodeFromSpec/tool-subagent-mcp/issues/15)) ([de3bef6](https://github.com/CodeFromSpec/tool-subagent-mcp/commit/de3bef67a37e8336256a05d972528cec2707acfb))
+
 ## [2.0.0](https://github.com/CodeFromSpec/tool-subagent-mcp/compare/v1.3.0...v2.0.0) (2026-04-26)
 
 
