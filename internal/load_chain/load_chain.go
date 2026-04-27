@@ -1,4 +1,4 @@
-// code-from-spec: ROOT/tech_design/internal/tools/load_chain@v55
+// code-from-spec: ROOT/tech_design/internal/tools/load_chain@v59
 package load_chain
 
 import (
@@ -65,7 +65,8 @@ func HandleLoadChain(
 	}
 
 	// Step 5: Generate a UUID for heredoc delimiters. The same UUID is used
-	// for all file sections in this response.
+	// for all file sections in this response to avoid collisions with file
+	// content.
 	delimID := uuid.New().String()
 
 	// Step 6: Resolve the full chain.
@@ -79,22 +80,30 @@ func HandleLoadChain(
 	// Step 7: Build the output.
 
 	// --- Ancestors ---
-	// For each ancestor, use ParseNode and extract the # Public section.
-	// If Public is nil, include an empty section body.
-	// The content is the "# Public" heading followed by its content and all
-	// subsections, reconstructed as markdown.
+	// For each ancestor, use ParseNode and extract the # Public section's
+	// own body content followed by each subsection — WITHOUT the # Public
+	// heading itself (per spec: "without the # Public heading itself").
+	// If the public section is nil, or the reconstructed content is empty
+	// (blank after trimming), skip this ancestor entirely.
 	for _, item := range chain.Ancestors {
 		nodeBody, parseErr := parsenode.ParseNode(item.LogicalName)
 		if parseErr != nil {
 			return toolError(fmt.Sprintf("error parsing node %s: %v", item.LogicalName, parseErr)), nil, nil
 		}
-		sectionContent := reconstructPublicSection(nodeBody.Public)
+		// reconstructPublicBody returns the body content and subsections,
+		// but not the # Public heading line.
+		sectionContent := reconstructPublicBody(nodeBody.Public)
+		if strings.TrimSpace(sectionContent) == "" {
+			// Skip ancestors with no meaningful public content.
+			continue
+		}
 		writeSection(&buf, delimID, item.LogicalName, item.FilePath, sectionContent)
 	}
 
 	// --- Target ---
 	// Include the target file with a reduced frontmatter containing only
-	// version and implements. All other frontmatter fields are stripped.
+	// version and implements. All other frontmatter fields are stripped to
+	// save tokens and avoid confusing the subagent with internal details.
 	targetContent, readErr := os.ReadFile(chain.Target.FilePath)
 	if readErr != nil {
 		return toolError(fmt.Sprintf("error reading file %s: %v", chain.Target.FilePath, readErr)), nil, nil
@@ -103,39 +112,94 @@ func HandleLoadChain(
 	writeSection(&buf, delimID, chain.Target.LogicalName, chain.Target.FilePath, reducedContent)
 
 	// --- Dependencies ---
-	// For each dependency:
-	//   - If Qualifier is nil: extract and include the full # Public section.
-	//   - If Qualifier is non-nil: find the ## <qualifier> subsection within
-	//     # Public and include only that subsection's content.
-	for _, item := range chain.Dependencies {
-		// The base logical name (without qualifier) is used for ParseNode.
-		// logicalnames.PathFromLogicalName already strips the qualifier, and
-		// the ChainItem.LogicalName from chainresolver is the original entry.
-		// We need to strip any qualifier from the name before calling ParseNode.
-		baseName := stripQualifier(item.LogicalName)
+	// Group dependency items by FilePath, preserving first-occurrence order.
+	// For each group, call ParseNode once using the base logical name (any
+	// item in the group, qualifier stripped).
+	//
+	// Build the group's content as follows:
+	//   - If any item in the group has Qualifier = nil, include the full
+	//     # Public section's body content and subsections — WITHOUT the
+	//     # Public heading itself.
+	//   - Otherwise, for each item in the group (in order), find the
+	//     ## <qualifier> subsection within # Public. If the subsection has
+	//     no body content (blank after trimming), treat it as absent and
+	//     contribute nothing. Otherwise, append the ## heading followed by
+	//     the body content.
+	//
+	// If the consolidated content is empty (blank after trimming), skip the
+	// group — do not emit a file section for it.
 
+	// depOrder tracks the file paths in first-occurrence order.
+	depOrder := make([]string, 0)
+	// depGroups maps FilePath to the list of ChainItems in that group.
+	depGroups := make(map[string][]chainresolver.ChainItem)
+
+	for _, item := range chain.Dependencies {
+		fp := item.FilePath
+		if _, exists := depGroups[fp]; !exists {
+			depOrder = append(depOrder, fp)
+		}
+		depGroups[fp] = append(depGroups[fp], item)
+	}
+
+	for _, fp := range depOrder {
+		items := depGroups[fp]
+
+		// Use the base logical name of the first item in the group (qualifier
+		// stripped) to call ParseNode. All items in the group share the same
+		// file path, so any item's base name resolves to the same node.
+		baseName := stripQualifier(items[0].LogicalName)
 		nodeBody, parseErr := parsenode.ParseNode(baseName)
 		if parseErr != nil {
 			return toolError(fmt.Sprintf("error parsing node %s: %v", baseName, parseErr)), nil, nil
 		}
 
-		var sectionContent string
-		if item.Qualifier == nil {
-			// No qualifier: include the full # Public section.
-			sectionContent = reconstructPublicSection(nodeBody.Public)
-		} else {
-			// Qualifier present: find and include only the matching ## subsection.
-			sectionContent = extractQualifiedSubsection(nodeBody.Public, *item.Qualifier)
-			if sectionContent == "" {
-				// Subsection not found; include an empty body to signal the gap.
-				sectionContent = fmt.Sprintf("(subsection %q not found in # Public)", *item.Qualifier)
+		// Determine what to include:
+		// If any item has Qualifier == nil, the entire # Public section body
+		// is needed (it already includes all subsections). The # Public
+		// heading itself is NOT emitted per spec.
+		hasFullPublic := false
+		for _, item := range items {
+			if item.Qualifier == nil {
+				hasFullPublic = true
+				break
 			}
 		}
-		writeSection(&buf, delimID, item.LogicalName, item.FilePath, sectionContent)
+
+		var groupContent string
+		if hasFullPublic {
+			// Include the full # Public body (content + subsections),
+			// WITHOUT the # Public heading.
+			groupContent = reconstructPublicBody(nodeBody.Public)
+		} else {
+			// Append each qualified subsection in order. Each subsection
+			// includes its ## heading per spec: "including the ## heading".
+			// If the subsection has no body content (blank after trimming),
+			// treat it as absent and contribute nothing.
+			var sb strings.Builder
+			for _, item := range items {
+				subContent := extractQualifiedSubsection(nodeBody.Public, *item.Qualifier)
+				if subContent != "" {
+					sb.WriteString(subContent)
+				}
+			}
+			groupContent = sb.String()
+		}
+
+		// Skip groups with no meaningful content.
+		if strings.TrimSpace(groupContent) == "" {
+			continue
+		}
+
+		// Emit a single file section for the group. Per spec: "Use the base
+		// logical name (qualifier stripped) as the node: header for the
+		// emitted file section."
+		writeSection(&buf, delimID, baseName, fp, groupContent)
 	}
 
 	// --- Code files ---
-	// Include existing source files as-is, with only path: header (no node:).
+	// Include existing source files as-is, with only a path: header (no
+	// node: header). These are the currently generated implementation files.
 	for _, fp := range chain.Code {
 		codeContent, readErr := os.ReadFile(fp)
 		if readErr != nil {
@@ -166,34 +230,29 @@ func stripQualifier(name string) string {
 	return name
 }
 
-// reconstructPublicSection reconstructs the markdown for the # Public section
-// from a parsed Section. If pub is nil (no public section exists), an empty
-// string is returned.
+// reconstructPublicBody returns the markdown content of the # Public section's
+// body and subsections, WITHOUT the "# Public" heading line itself.
 //
-// The reconstructed content includes:
-//   - The "# Public" heading line.
-//   - The section's own Content (content between the heading and first ##).
-//   - Each subsection as "## <heading>\n<content>".
-func reconstructPublicSection(pub *parsenode.Section) string {
+// Per spec: ancestors and dependencies emit "the # Public section's own body
+// content followed by each subsection reconstructed as markdown — without the
+// # Public heading itself."
+//
+// Returns an empty string if pub is nil.
+func reconstructPublicBody(pub *parsenode.Section) string {
 	if pub == nil {
 		return ""
 	}
 
 	var sb strings.Builder
 
-	// Write the # Public heading using the original heading text.
-	sb.WriteString("# ")
-	sb.WriteString(pub.Heading)
-	sb.WriteString("\n")
-
 	// Write the section's own content (between the # heading and first ##).
+	// No # Public heading is emitted per spec.
 	if pub.Content != "" {
-		sb.WriteString("\n")
 		sb.WriteString(pub.Content)
 		sb.WriteString("\n")
 	}
 
-	// Write each subsection.
+	// Write each subsection as "## <heading>\n<content>".
 	for _, sub := range pub.Subsections {
 		sb.WriteString("\n## ")
 		sb.WriteString(sub.Heading)
@@ -210,8 +269,15 @@ func reconstructPublicSection(pub *parsenode.Section) string {
 
 // extractQualifiedSubsection finds a ## subsection within the # Public section
 // whose normalized heading matches the normalized qualifier, and returns its
-// content as markdown (including the ## heading). Returns an empty string if
-// not found or if the public section is nil.
+// content as markdown including the ## heading.
+//
+// Per spec: "If the subsection has no body content (blank after trimming),
+// treat it as absent and contribute nothing." So if the subsection's content
+// is blank after trimming, this function returns an empty string — the ##
+// heading is NOT emitted either.
+//
+// Returns an empty string if not found, if the public section is nil, or if
+// the subsection body is blank after trimming.
 func extractQualifiedSubsection(pub *parsenode.Section, qualifier string) string {
 	if pub == nil {
 		return ""
@@ -221,15 +287,18 @@ func extractQualifiedSubsection(pub *parsenode.Section, qualifier string) string
 
 	for _, sub := range pub.Subsections {
 		if normalizename.NormalizeName(sub.Heading) == normalizedQualifier {
+			// Per spec: if body content is blank after trimming, treat the
+			// subsection as absent and contribute nothing.
+			if strings.TrimSpace(sub.Content) == "" {
+				return ""
+			}
 			var sb strings.Builder
 			sb.WriteString("## ")
 			sb.WriteString(sub.Heading)
 			sb.WriteString("\n")
-			if sub.Content != "" {
-				sb.WriteString("\n")
-				sb.WriteString(sub.Content)
-				sb.WriteString("\n")
-			}
+			sb.WriteString("\n")
+			sb.WriteString(sub.Content)
+			sb.WriteString("\n")
 			return sb.String()
 		}
 	}
@@ -239,10 +308,8 @@ func extractQualifiedSubsection(pub *parsenode.Section, qualifier string) string
 
 // reduceTargetFrontmatter rewrites the frontmatter of the target file to
 // contain only the version and implements fields. All other fields
-// (parent_version, subject_version, depends_on, etc.) are stripped.
-//
-// This reduces token usage and avoids exposing internal dependency version
-// information to the subagent.
+// (parent_version, subject_version, depends_on, etc.) are stripped to save
+// tokens and avoid confusing the subagent with internal details.
 func reduceTargetFrontmatter(content string, fm *frontmatter.Frontmatter) string {
 	// Build the reduced frontmatter block.
 	var reduced strings.Builder
@@ -257,8 +324,10 @@ func reduceTargetFrontmatter(content string, fm *frontmatter.Frontmatter) string
 	reduced.WriteString("---")
 
 	// Find and replace the frontmatter block in the original content.
-	// Locate the opening "---".
+	// Split on newlines while preserving the line terminators.
 	lines := strings.SplitAfter(content, "\n")
+
+	// Find the opening "---".
 	i := 0
 	for i < len(lines) {
 		if strings.TrimSpace(lines[i]) == "---" {
@@ -267,10 +336,10 @@ func reduceTargetFrontmatter(content string, fm *frontmatter.Frontmatter) string
 		i++
 	}
 	if i >= len(lines) {
-		// No opening delimiter — return original content with reduced frontmatter prepended.
+		// No opening delimiter — return reduced frontmatter prepended to content.
 		return reduced.String() + "\n" + content
 	}
-	// Preserve content before the opening "---" (typically empty).
+	// Preserve any content before the opening "---" (typically empty).
 	before := strings.Join(lines[:i], "")
 
 	// Find the closing "---".
@@ -282,7 +351,7 @@ func reduceTargetFrontmatter(content string, fm *frontmatter.Frontmatter) string
 		j++
 	}
 	if j >= len(lines) {
-		// No closing delimiter — return original.
+		// No closing delimiter — return original content unchanged.
 		return content
 	}
 
@@ -292,7 +361,7 @@ func reduceTargetFrontmatter(content string, fm *frontmatter.Frontmatter) string
 }
 
 // writeSection writes a spec/dependency file section with node: and path:
-// headers, separated from the content by a blank line.
+// headers, followed by a blank line and the file content.
 //
 // Format:
 //
@@ -311,7 +380,7 @@ func writeSection(buf *strings.Builder, delimID, logicalName, filePath, content 
 }
 
 // writeCodeSection writes a code file section with only a path: header
-// (no node: header), separated from the content by a blank line.
+// (no node: header), followed by a blank line and the file content.
 //
 // Format:
 //
@@ -329,7 +398,7 @@ func writeCodeSection(buf *strings.Builder, delimID, filePath, content string) {
 
 // toolError creates an MCP tool error result with the given message.
 // Tool errors are returned as MCP-level errors (IsError: true) so the server
-// continues running after reporting the error.
+// continues running after reporting the error to the caller.
 func toolError(message string) *mcp.CallToolResult {
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: message}},

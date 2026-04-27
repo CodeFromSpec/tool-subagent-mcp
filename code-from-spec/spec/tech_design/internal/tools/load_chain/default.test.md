@@ -1,6 +1,6 @@
 ---
-version: 16
-parent_version: 55
+version: 19
+parent_version: 59
 implements:
   - internal/load_chain/load_chain_test.go
 ---
@@ -33,7 +33,8 @@ sections. Call `handleLoadChain` with
 `LogicalName: "ROOT/a"`.
 
 Expect: success result. Chain content contains:
-- `ROOT` with only its `# Public` section content
+- `ROOT` with only the body of its `# Public` section
+  (the `# Public` heading itself is not present)
 - `ROOT/a` with reduced frontmatter and full body
 
 ### Valid TEST/ node
@@ -43,7 +44,8 @@ and `TEST/a`. Call `handleLoadChain` with
 `LogicalName: "TEST/a"`.
 
 Expect: success result. `ROOT` and `ROOT/a` contain only
-their `# Public` sections. `TEST/a` contains reduced
+the body of their `# Public` sections (the `# Public`
+heading itself is not present). `TEST/a` contains reduced
 frontmatter and full body.
 
 ### Node with ROOT/ dependency, no qualifier
@@ -76,15 +78,16 @@ Create a spec tree: `ROOT` and `ROOT/a` (leaf with
 Expect: success result. Text contains `<<<FILE_` and
 `<<<END_FILE_` delimiters with `node:` and `path:` headers.
 
-### Ancestors contain only # Public
+### Ancestors expose only # Public body, without heading
 
 Create a spec tree: `ROOT` (with `# Public` and private
 sections), `ROOT/a`, `ROOT/a/b` (leaf with `implements`).
 Call `handleLoadChain` with `LogicalName: "ROOT/a/b"`.
 
 Expect: the sections for `ROOT` and `ROOT/a` contain only
-their `# Public` content. Private sections and node name
-sections are not present.
+the body of their `# Public` sections. The `# Public`
+heading itself, private sections, and node name sections
+are not present.
 
 ### Target has reduced frontmatter
 
@@ -117,15 +120,48 @@ Call `handleLoadChain` with `LogicalName: "ROOT/a"`.
 Expect: success result. Chain content does not contain a
 file section for `src/a.go`.
 
-### Ancestor with no # Public section
+### Ancestor with no # Public section omitted
 
 Create a spec tree: `ROOT` (with no `# Public` — only node
 name and private sections) and `ROOT/a` (leaf with
 `implements`). Call `handleLoadChain` with
 `LogicalName: "ROOT/a"`.
 
-Expect: success result. The section for `ROOT` is included
-but with empty content.
+Expect: success result. The chain content does not contain
+a file section for `ROOT`.
+
+### Ancestor with empty # Public section omitted
+
+Create a spec tree: `ROOT` (with a `# Public` section that
+has no content and no subsections) and `ROOT/a` (leaf with
+`implements`). Call `handleLoadChain` with
+`LogicalName: "ROOT/a"`.
+
+Expect: success result. The chain content does not contain
+a file section for `ROOT`.
+
+### Dependency with empty extracted content omitted
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with `depends_on`
+referencing `ROOT/b(interface)`), `ROOT/b` (with a `# Public`
+section containing a `## Interface` subsection with no body).
+Call `handleLoadChain` with `LogicalName: "ROOT/a"`.
+
+Expect: success result. The chain content does not contain
+a file section for `ROOT/b`.
+
+### Multiple qualifiers on same dependency consolidated
+
+Create a spec tree: `ROOT`, `ROOT/a` (leaf with `depends_on`
+referencing both `ROOT/b(interface)` and `ROOT/b(constraints)`),
+`ROOT/b` (with a `# Public` section containing `## Interface`
+and `## Constraints` subsections, each with distinct content).
+Call `handleLoadChain` with `LogicalName: "ROOT/a"`.
+
+Expect: success result. The chain content contains exactly
+one file section for `ROOT/b`, and that section includes
+the content of both `## Interface` and `## Constraints` in
+order, without duplicating the file block.
 
 ## Failure Cases
 

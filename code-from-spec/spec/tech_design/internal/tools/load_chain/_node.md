@@ -1,5 +1,5 @@
 ---
-version: 55
+version: 59
 parent_version: 5
 depends_on:
   - path: EXTERNAL/google-uuid
@@ -93,7 +93,7 @@ Code files include only `path:`.
 node: ROOT
 path: code-from-spec/spec/_node.md
 
-<# Public section content>
+<Public section body — no # Public heading>
 <<<END_FILE_550e8400-e29b-41d4-a716-446655440000>>>
 
 <<<FILE_550e8400-e29b-41d4-a716-446655440000>>>
@@ -107,7 +107,7 @@ path: code-from-spec/spec/payments/fees/calculation/_node.md
 node: ROOT/architecture/backend
 path: code-from-spec/spec/architecture/backend/_node.md
 
-<# Public section content>
+<Public section body — no # Public heading>
 <<<END_FILE_550e8400-e29b-41d4-a716-446655440000>>>
 
 <<<FILE_550e8400-e29b-41d4-a716-446655440000>>>
@@ -139,22 +139,40 @@ path: internal/payments/fees/calculation.go
 
    **Ancestors** — for each ancestor, call `ParseNode` with
    the ancestor's logical name. Extract the `# Public`
-   section. If `Public` is nil, include an empty section.
-   The content is the `# Public` heading followed by its
-   content and all subsections, reconstructed as markdown.
+   section. If `Public` is nil, or if `Public` has no
+   content and no subsections, skip this ancestor entirely —
+   do not emit a file section for it. Otherwise, emit a
+   file section whose content is the `# Public` section's
+   own body content followed by each subsection reconstructed
+   as markdown — **without** the `# Public` heading itself.
 
    **Target** — read the file and include it with a reduced
    frontmatter containing only `version` and `implements`.
    All other frontmatter fields are stripped.
 
-   **Dependencies** — for each dependency, call `ParseNode`
-   with the dependency's base logical name (without
-   qualifier). If the `ChainItem.Qualifier` is nil, extract
-   the `# Public` section (same as ancestors). If the
-   `Qualifier` is non-nil, find the `## <qualifier>`
-   subsection within `# Public` using
-   `normalizename.NormalizeName` for comparison, and include
-   only that subsection's content.
+   **Dependencies** — group the dependency items by
+   `FilePath`, preserving first-occurrence order. For each
+   group, call `ParseNode` once using the base logical name
+   of any item in the group (without qualifier). Use the base
+   logical name (qualifier stripped) as the `node:` header
+   for the emitted file section.
+
+   Build the group's content as follows:
+   - If any item in the group has `Qualifier` = nil, include
+     the `# Public` section's body content and subsections —
+     **without** the `# Public` heading itself.
+   - Otherwise, for each item in the group (in order), find
+     the `## <qualifier>` subsection within `# Public` using
+     `normalizename.NormalizeName` for comparison. If the
+     subsection has no body content (blank after trimming),
+     treat it as absent and contribute nothing. Otherwise,
+     append the `##` heading followed by the body content.
+     Each subsection is appended in sequence.
+
+   If the consolidated content is empty (blank after
+   trimming), skip this group entirely — do not emit a file
+   section for it. Otherwise, emit a single file section for
+   the group containing the consolidated content.
 
    **Code** — for each code file, read the file and include
    it as-is.
