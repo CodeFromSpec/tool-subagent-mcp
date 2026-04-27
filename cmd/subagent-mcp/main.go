@@ -1,5 +1,5 @@
-// code-from-spec: ROOT/tech_design/server@v47
-// spec: ROOT/tech_design/server@v47
+// code-from-spec: ROOT/tech_design/server@v48
+// spec: ROOT/tech_design/server@v48
 package main
 
 import (

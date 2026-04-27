@@ -1,4 +1,4 @@
-// code-from-spec: ROOT/tech_design/internal/tools/patch_file@v4
+// code-from-spec: ROOT/tech_design/internal/tools/patch_file@v5
 
 // Package patch_file implements the patch_file MCP tool handler.
 // It applies a unified diff to an existing file, after validating

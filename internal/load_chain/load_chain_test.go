@@ -1,8 +1,21 @@
-// code-from-spec: TEST/tech_design/internal/tools/load_chain@v14
+// spec: TEST/tech_design/internal/tools/load_chain@v16
 package load_chain
+
+// This test file verifies the HandleLoadChain tool handler.
+// Each test creates an isolated project structure using t.TempDir(),
+// changes the working directory to the temp dir for the duration of
+// the test, and calls handleLoadChain (the unexported wrapper or the
+// exported HandleLoadChain) to exercise the full code path.
+//
+// Spec files are placed at the paths that logicalnames.PathFromLogicalName
+// produces:
+//   ROOT          → code-from-spec/_node.md
+//   ROOT/a        → code-from-spec/a/_node.md
+//   TEST/a        → code-from-spec/a/default.test.md
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,515 +24,468 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// testWriteFile creates a directory and writes a file with the given content.
-// Fails the test if any operation fails.
-func testWriteFile(t *testing.T, base string, relPath string, content string) {
+// --------------------------------------------------------------------------
+// Test helpers
+// --------------------------------------------------------------------------
+
+// testChdir changes the current working directory to dir and registers a
+// cleanup function that restores the original directory at the end of the
+// test. This is necessary because path validation uses os.Getwd().
+func testChdir(t *testing.T, dir string) {
 	t.Helper()
-	full := filepath.Join(base, filepath.FromSlash(relPath))
-	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-		t.Fatalf("mkdir %s: %v", filepath.Dir(full), err)
+	orig, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("testChdir: os.Getwd: %v", err)
 	}
-	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-		t.Fatalf("write %s: %v", full, err)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("testChdir: os.Chdir(%q): %v", dir, err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(orig); err != nil {
+			// Best-effort restore; flag as fatal so future tests don't run
+			// in the wrong directory.
+			t.Fatalf("testChdir cleanup: os.Chdir(%q): %v", orig, err)
+		}
+	})
+}
+
+// testWriteFile writes content to a file, creating parent directories as
+// needed.
+func testWriteFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("testWriteFile: MkdirAll(%q): %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("testWriteFile: WriteFile(%q): %v", path, err)
 	}
 }
 
-// testCallHandler calls HandleLoadChain with the given logical name and returns
-// the result. Does not fail the test — the caller inspects the result.
+// testCallHandler invokes HandleLoadChain with the given logical name and
+// returns the result.
 func testCallHandler(t *testing.T, logicalName string) *mcp.CallToolResult {
 	t.Helper()
-	result, _, err := HandleLoadChain(
-		context.Background(),
-		&mcp.CallToolRequest{},
-		LoadChainArgs{LogicalName: logicalName},
-	)
+	args := LoadChainArgs{LogicalName: logicalName}
+	result, _, err := HandleLoadChain(context.Background(), &mcp.CallToolRequest{}, args)
 	if err != nil {
 		t.Fatalf("HandleLoadChain returned unexpected Go error: %v", err)
 	}
 	return result
 }
 
-// testResultText extracts the text content from a CallToolResult.
+// testResultText extracts the text from the first content entry of the result.
+// Fails the test if no text content is available.
 func testResultText(t *testing.T, result *mcp.CallToolResult) string {
 	t.Helper()
 	if len(result.Content) == 0 {
-		t.Fatal("result has no content")
+		t.Fatal("testResultText: result has no content")
 	}
 	tc, ok := result.Content[0].(*mcp.TextContent)
 	if !ok {
-		t.Fatal("result content is not TextContent")
+		t.Fatalf("testResultText: content[0] is %T, want *mcp.TextContent", result.Content[0])
 	}
 	return tc.Text
 }
 
-// testChdir changes the working directory to dir for the duration of the
-// test and restores it when the test completes.
-func testChdir(t *testing.T, dir string) {
+// testAssertSuccess fails the test if the result is an error result.
+func testAssertSuccess(t *testing.T, result *mcp.CallToolResult) {
 	t.Helper()
-	orig, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir %s: %v", dir, err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(orig)
-	})
-}
-
-// --- Happy Path Tests ---
-
-// TestValidROOTLeafNode verifies that a valid ROOT/ leaf node
-// returns a success result containing chain content from ROOT and ROOT/a.
-// Both nodes have # Public sections.
-func TestValidROOTLeafNode(t *testing.T) {
-	tmp := t.TempDir()
-
-	// ROOT node with a # Public section
-	testWriteFile(t, tmp, "code-from-spec/spec/_node.md", `---
-version: 1
----
-
-# ROOT
-
-# Public
-
-## Overview
-
-Root overview.
-`)
-
-	// ROOT/a leaf node with # Public and implements
-	testWriteFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
-version: 1
-parent_version: 1
-implements:
-  - src/a.go
----
-
-# ROOT/a
-
-# Public
-
-## Interface
-
-The interface for a.
-`)
-
-	testChdir(t, tmp)
-
-	result := testCallHandler(t, "ROOT/a")
-
 	if result.IsError {
-		t.Fatalf("expected success, got error: %s", testResultText(t, result))
-	}
-
-	text := testResultText(t, result)
-
-	// Chain should contain sections for ROOT and ROOT/a
-	if !strings.Contains(text, "node: ROOT") {
-		t.Error("chain content missing ROOT node section")
-	}
-	if !strings.Contains(text, "node: ROOT/a") {
-		t.Error("chain content missing ROOT/a node section")
+		t.Fatalf("expected success result, got tool error: %s", testResultText(t, result))
 	}
 }
 
-// TestValidTESTNode verifies that a valid TEST/ node returns a success result.
-// ROOT and ROOT/a contain only their # Public sections; TEST/a contains
-// reduced frontmatter and full body.
-func TestValidTESTNode(t *testing.T) {
-	tmp := t.TempDir()
+// testAssertToolError fails the test if the result is not an error result, or
+// if the error message does not contain the expected substring.
+func testAssertToolError(t *testing.T, result *mcp.CallToolResult, wantSubstr string) {
+	t.Helper()
+	if !result.IsError {
+		t.Fatalf("expected tool error, got success: %s", testResultText(t, result))
+	}
+	text := testResultText(t, result)
+	if !strings.Contains(text, wantSubstr) {
+		t.Fatalf("tool error message %q does not contain %q", text, wantSubstr)
+	}
+}
 
-	// ROOT node with # Public
-	testWriteFile(t, tmp, "code-from-spec/spec/_node.md", `---
+// --------------------------------------------------------------------------
+// Spec file content builders
+// --------------------------------------------------------------------------
+
+// testRootSpec returns a minimal ROOT spec with a # Public section.
+func testRootSpec() string {
+	return `---
 version: 1
 ---
 
 # ROOT
 
+Some private content.
+
 # Public
 
-## Overview
+Public content for ROOT.
+`
+}
 
-Root public content.
-`)
-
-	// ROOT/a with # Public
-	testWriteFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
+// testRootSpecNoPublic returns a ROOT spec with no # Public section.
+func testRootSpecNoPublic() string {
+	return `---
 version: 1
+---
+
+# ROOT
+
+Some private content only.
+`
+}
+
+// testRootSpecWithPrivate returns a ROOT spec that has both # Public and
+// additional private sections, used to verify that only # Public is exposed.
+func testRootSpecWithPrivate() string {
+	return `---
+version: 1
+---
+
+# ROOT
+
+Node name section content.
+
+# Public
+
+This is public.
+
+# Private Details
+
+This should not appear in ancestor output.
+`
+}
+
+// testLeafSpec returns a simple leaf spec under ROOT/a with implements.
+func testLeafSpec(implements ...string) string {
+	implLines := ""
+	for _, p := range implements {
+		implLines += fmt.Sprintf("  - %s\n", p)
+	}
+	return fmt.Sprintf(`---
+version: 3
 parent_version: 1
 implements:
-  - src/a.go
+%s---
+
+# ROOT/a
+
+Leaf node content.
+
+# Public
+
+Public leaf content.
+`, implLines)
+}
+
+// testLeafSpecWithDepends returns a leaf spec that depends on another node.
+func testLeafSpecWithDepends(dependsOn string, implements ...string) string {
+	implLines := ""
+	for _, p := range implements {
+		implLines += fmt.Sprintf("  - %s\n", p)
+	}
+	return fmt.Sprintf(`---
+version: 3
+parent_version: 1
+depends_on:
+  - path: %s
+    version: 1
+implements:
+%s---
+
+# ROOT/a
+
+Leaf node content.
+
+# Public
+
+Public leaf content.
+`, dependsOn, implLines)
+}
+
+// testDepSpec returns a spec for ROOT/b with # Public containing two subsections.
+func testDepSpec() string {
+	return `---
+version: 1
+---
+
+# ROOT/b
+
+Dependency node.
+
+# Public
+
+Public intro.
+
+## Interface
+
+Interface subsection content.
+
+## Constraints
+
+Constraints subsection content.
+`
+}
+
+// testIntermediateSpec returns a spec for an intermediate node (ROOT/a)
+// with a # Public section but no implements.
+func testIntermediateSpec() string {
+	return `---
+version: 2
 ---
 
 # ROOT/a
 
+Intermediate node.
+
 # Public
 
-## Interface
+Public intermediate content.
+`
+}
 
-The interface for a.
-`)
-
-	// TEST/a node
-	testWriteFile(t, tmp, "code-from-spec/spec/a/default.test.md", `---
-version: 2
-parent_version: 1
+// testLeafSpecLevel2 returns a leaf spec for ROOT/a/b.
+func testLeafSpecLevel2(implements ...string) string {
+	implLines := ""
+	for _, p := range implements {
+		implLines += fmt.Sprintf("  - %s\n", p)
+	}
+	return fmt.Sprintf(`---
+version: 4
+parent_version: 2
 implements:
-  - src/a_test.go
+%s---
+
+# ROOT/a/b
+
+Deep leaf content.
+
+# Public
+
+Deep public content.
+`, implLines)
+}
+
+// testTestSpec returns a TEST/a spec.
+func testTestSpec() string {
+	return `---
+version: 2
+parent_version: 3
+implements:
+  - internal/a/a_test.go
 ---
 
 # TEST/a
 
-## Happy Path
+Test node content.
 
-Test happy path cases.
-`)
+# Public
 
-	testChdir(t, tmp)
+Test public content.
+`
+}
+
+// --------------------------------------------------------------------------
+// Happy path tests
+// --------------------------------------------------------------------------
+
+// TestHandleLoadChain_ValidRootLeaf verifies that a valid ROOT/ leaf node
+// returns a success result whose chain content contains the ancestor ROOT
+// with only its # Public section and the target ROOT/a with reduced
+// frontmatter and full body.
+func TestHandleLoadChain_ValidRootLeaf(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
+
+	// Create spec tree.
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "_node.md"), testRootSpec())
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "_node.md"), testLeafSpec("src/a.go"))
+
+	result := testCallHandler(t, "ROOT/a")
+	testAssertSuccess(t, result)
+
+	text := testResultText(t, result)
+
+	// ROOT section should be present and contain only # Public content.
+	if !strings.Contains(text, "node: ROOT") {
+		t.Error("expected ROOT section in chain")
+	}
+	if !strings.Contains(text, "Public content for ROOT") {
+		t.Error("expected ROOT # Public content in chain")
+	}
+
+	// TARGET section for ROOT/a should be present.
+	if !strings.Contains(text, "node: ROOT/a") {
+		t.Error("expected ROOT/a section in chain")
+	}
+
+	// Target content should include leaf body.
+	if !strings.Contains(text, "Leaf node content") {
+		t.Error("expected leaf body in chain")
+	}
+}
+
+// TestHandleLoadChain_ValidTestNode verifies that a TEST/ node returns a
+// success result, with ROOT and ROOT/a providing only their # Public
+// sections and TEST/a providing reduced frontmatter and full body.
+func TestHandleLoadChain_ValidTestNode(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
+
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "_node.md"), testRootSpec())
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "_node.md"), testLeafSpec("src/a.go"))
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "default.test.md"), testTestSpec())
 
 	result := testCallHandler(t, "TEST/a")
-
-	if result.IsError {
-		t.Fatalf("expected success, got error: %s", testResultText(t, result))
-	}
+	testAssertSuccess(t, result)
 
 	text := testResultText(t, result)
 
-	// ROOT and ROOT/a should be present (as ancestors)
-	if !strings.Contains(text, "node: ROOT") {
-		t.Error("chain content missing ROOT ancestor section")
+	// ROOT and ROOT/a should contain only their # Public content.
+	if !strings.Contains(text, "Public content for ROOT") {
+		t.Error("expected ROOT # Public content")
 	}
-	if !strings.Contains(text, "node: ROOT/a") {
-		t.Error("chain content missing ROOT/a ancestor section")
+	if !strings.Contains(text, "Public leaf content") {
+		t.Error("expected ROOT/a # Public content")
 	}
 
-	// TEST/a should be the target with full body
+	// TEST/a target section should be present.
 	if !strings.Contains(text, "node: TEST/a") {
-		t.Error("chain content missing TEST/a target section")
+		t.Error("expected TEST/a section in chain")
 	}
-
-	// Verify TEST/a has its body content (Happy Path section)
-	if !strings.Contains(text, "Happy Path") {
-		t.Error("TEST/a target section missing body content")
+	if !strings.Contains(text, "Test node content") {
+		t.Error("expected TEST/a body in chain")
 	}
 }
 
-// TestNodeWithDependencyNoQualifier verifies that a node with a ROOT/
-// dependency (no qualifier) includes the full # Public section of the dependency.
-func TestNodeWithDependencyNoQualifier(t *testing.T) {
-	tmp := t.TempDir()
+// TestHandleLoadChain_DependencyNoQualifier verifies that a dependency
+// without a qualifier includes the full # Public section.
+func TestHandleLoadChain_DependencyNoQualifier(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
 
-	testWriteFile(t, tmp, "code-from-spec/spec/_node.md", `---
-version: 1
----
-
-# ROOT
-`)
-
-	// ROOT/a depends on ROOT/b (no qualifier)
-	testWriteFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
-version: 1
-parent_version: 1
-depends_on:
-  - path: ROOT/b
-    version: 1
-implements:
-  - src/a.go
----
-
-# ROOT/a
-`)
-
-	// ROOT/b has # Public with two subsections
-	testWriteFile(t, tmp, "code-from-spec/spec/b/_node.md", `---
-version: 1
-parent_version: 1
-implements:
-  - src/b.go
----
-
-# ROOT/b
-
-# Public
-
-## Interface
-
-The interface for b.
-
-## Constraints
-
-The constraints for b.
-`)
-
-	testChdir(t, tmp)
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "_node.md"), testRootSpec())
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "_node.md"),
+		testLeafSpecWithDepends("ROOT/b", "src/a.go"))
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "b", "_node.md"), testDepSpec())
 
 	result := testCallHandler(t, "ROOT/a")
-
-	if result.IsError {
-		t.Fatalf("expected success, got error: %s", testResultText(t, result))
-	}
+	testAssertSuccess(t, result)
 
 	text := testResultText(t, result)
 
-	// Dependency ROOT/b section should contain both subsections (full # Public)
-	if !strings.Contains(text, "The interface for b.") {
-		t.Error("dependency ROOT/b section missing ## Interface subsection content")
+	// The ROOT/b dependency section should contain both subsections.
+	if !strings.Contains(text, "Interface subsection content") {
+		t.Error("expected ## Interface content from ROOT/b dependency")
 	}
-	if !strings.Contains(text, "The constraints for b.") {
-		t.Error("dependency ROOT/b section missing ## Constraints subsection content")
+	if !strings.Contains(text, "Constraints subsection content") {
+		t.Error("expected ## Constraints content from ROOT/b dependency")
 	}
 }
 
-// TestNodeWithDependencyWithQualifier verifies that a node with a ROOT/
-// dependency using a qualifier includes only the specified subsection.
-func TestNodeWithDependencyWithQualifier(t *testing.T) {
-	tmp := t.TempDir()
+// TestHandleLoadChain_DependencyWithQualifier verifies that a dependency
+// with a qualifier includes only the matching ## subsection, not others.
+func TestHandleLoadChain_DependencyWithQualifier(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
 
-	testWriteFile(t, tmp, "code-from-spec/spec/_node.md", `---
-version: 1
----
-
-# ROOT
-`)
-
-	// ROOT/a depends on ROOT/b with qualifier "interface"
-	testWriteFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
-version: 1
-parent_version: 1
-depends_on:
-  - path: ROOT/b(interface)
-    version: 1
-implements:
-  - src/a.go
----
-
-# ROOT/a
-`)
-
-	// ROOT/b has # Public with ## Interface and ## Constraints
-	testWriteFile(t, tmp, "code-from-spec/spec/b/_node.md", `---
-version: 1
-parent_version: 1
-implements:
-  - src/b.go
----
-
-# ROOT/b
-
-# Public
-
-## Interface
-
-The interface for b.
-
-## Constraints
-
-The constraints for b.
-`)
-
-	testChdir(t, tmp)
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "_node.md"), testRootSpec())
+	// ROOT/a depends on ROOT/b(interface) — only the ## Interface subsection.
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "_node.md"),
+		testLeafSpecWithDepends("ROOT/b(interface)", "src/a.go"))
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "b", "_node.md"), testDepSpec())
 
 	result := testCallHandler(t, "ROOT/a")
-
-	if result.IsError {
-		t.Fatalf("expected success, got error: %s", testResultText(t, result))
-	}
+	testAssertSuccess(t, result)
 
 	text := testResultText(t, result)
 
-	// Only ## Interface should be present, not ## Constraints
-	if !strings.Contains(text, "The interface for b.") {
-		t.Error("dependency ROOT/b section missing qualified ## Interface subsection content")
+	// Only the Interface subsection content should be present.
+	if !strings.Contains(text, "Interface subsection content") {
+		t.Error("expected ## Interface content in chain")
 	}
-	if strings.Contains(text, "The constraints for b.") {
-		t.Error("dependency ROOT/b section should not include ## Constraints when qualified with 'interface'")
+	// Constraints must NOT be present when qualifier is "interface".
+	if strings.Contains(text, "Constraints subsection content") {
+		t.Error("unexpected ## Constraints content in chain (should be excluded by qualifier)")
 	}
 }
 
-// TestChainContentUsesHeredocFormat verifies the output uses
-// <<<FILE_>>> and <<<END_FILE_>>> delimiters with node: and path: headers.
-func TestChainContentUsesHeredocFormat(t *testing.T) {
-	tmp := t.TempDir()
+// TestHandleLoadChain_HeredocFormat verifies that the chain output uses
+// heredoc-style delimiters with node: and path: headers.
+func TestHandleLoadChain_HeredocFormat(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
 
-	testWriteFile(t, tmp, "code-from-spec/spec/_node.md", `---
-version: 1
----
-
-# ROOT
-`)
-
-	testWriteFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
-version: 1
-parent_version: 1
-implements:
-  - src/a.go
----
-
-# ROOT/a
-`)
-
-	testChdir(t, tmp)
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "_node.md"), testRootSpec())
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "_node.md"), testLeafSpec("src/a.go"))
 
 	result := testCallHandler(t, "ROOT/a")
-
-	if result.IsError {
-		t.Fatalf("expected success, got error: %s", testResultText(t, result))
-	}
+	testAssertSuccess(t, result)
 
 	text := testResultText(t, result)
 
+	// Must contain heredoc delimiters.
 	if !strings.Contains(text, "<<<FILE_") {
-		t.Error("chain content missing <<<FILE_ delimiter")
+		t.Error("expected <<<FILE_ delimiter in chain output")
 	}
 	if !strings.Contains(text, "<<<END_FILE_") {
-		t.Error("chain content missing <<<END_FILE_ delimiter")
+		t.Error("expected <<<END_FILE_ delimiter in chain output")
 	}
+
+	// Sections must have node: and path: headers.
 	if !strings.Contains(text, "node:") {
-		t.Error("chain content missing node: header")
+		t.Error("expected node: header in chain output")
 	}
 	if !strings.Contains(text, "path:") {
-		t.Error("chain content missing path: header")
+		t.Error("expected path: header in chain output")
 	}
 }
 
-// TestAncestorsContainOnlyPublic verifies that ancestor sections contain
-// only the # Public section content, not private sections or the node name section.
-func TestAncestorsContainOnlyPublic(t *testing.T) {
-	tmp := t.TempDir()
+// TestHandleLoadChain_AncestorsContainOnlyPublic verifies that ancestor
+// sections in the chain contain only # Public content. Private sections and
+// node name sections must not appear.
+func TestHandleLoadChain_AncestorsContainOnlyPublic(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
 
-	// ROOT with # Public and a private section
-	testWriteFile(t, tmp, "code-from-spec/spec/_node.md", `---
-version: 1
----
-
-# ROOT
-
-# Public
-
-## Overview
-
-Root public content.
-
-# Private Section
-
-Root private content.
-`)
-
-	// ROOT/a with # Public and a private section
-	testWriteFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
-version: 1
-parent_version: 1
-implements:
-  - src/a/b.go
----
-
-# ROOT/a
-
-# Public
-
-## Overview
-
-a public content.
-
-# Private Details
-
-a private content.
-`)
-
-	// ROOT/a/b leaf with implements
-	testWriteFile(t, tmp, "code-from-spec/spec/a/b/_node.md", `---
-version: 1
-parent_version: 1
-implements:
-  - src/a/b.go
----
-
-# ROOT/a/b
-
-## Happy Path
-
-Target content.
-`)
-
-	testChdir(t, tmp)
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "_node.md"), testRootSpecWithPrivate())
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "_node.md"), testIntermediateSpec())
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "b", "_node.md"), testLeafSpecLevel2("src/b.go"))
 
 	result := testCallHandler(t, "ROOT/a/b")
-
-	if result.IsError {
-		t.Fatalf("expected success, got error: %s", testResultText(t, result))
-	}
+	testAssertSuccess(t, result)
 
 	text := testResultText(t, result)
 
-	// ROOT ancestor section should contain only # Public content
-	// Private sections must not appear in the ROOT ancestor section
-	sections := strings.Split(text, "<<<FILE_")
+	// Public content should be present.
+	if !strings.Contains(text, "This is public") {
+		t.Error("expected # Public content from ROOT in chain")
+	}
+	if !strings.Contains(text, "Public intermediate content") {
+		t.Error("expected # Public content from ROOT/a in chain")
+	}
 
-	for _, section := range sections {
-		if section == "" {
-			continue
-		}
-		// Check ROOT ancestor (not ROOT/a or ROOT/a/b)
-		if strings.Contains(section, "node: ROOT\n") {
-			parts := strings.SplitN(section, "\n\n", 2)
-			if len(parts) < 2 {
-				t.Fatal("ROOT section missing content separator")
-			}
-			content := parts[1]
-			if strings.Contains(content, "Root private content") {
-				t.Error("ROOT ancestor section contains private content")
-			}
-			if strings.Contains(content, "# Private Section") {
-				t.Error("ROOT ancestor section contains private section heading")
-			}
-		}
-
-		// Check ROOT/a ancestor
-		if strings.Contains(section, "node: ROOT/a\n") {
-			parts := strings.SplitN(section, "\n\n", 2)
-			if len(parts) < 2 {
-				t.Fatal("ROOT/a section missing content separator")
-			}
-			content := parts[1]
-			if strings.Contains(content, "a private content") {
-				t.Error("ROOT/a ancestor section contains private content")
-			}
-			if strings.Contains(content, "# Private Details") {
-				t.Error("ROOT/a ancestor section contains private section heading")
-			}
-		}
+	// Private section content must NOT appear in ancestor sections.
+	// Note: "Private Details" heading or its content must not appear.
+	if strings.Contains(text, "This should not appear") {
+		t.Error("private section content must not appear in ancestor output")
 	}
 }
 
-// TestTargetHasReducedFrontmatter verifies that the target node's section
-// contains only version and implements in the frontmatter; other fields
-// (parent_version, depends_on) are stripped.
-func TestTargetHasReducedFrontmatter(t *testing.T) {
-	tmp := t.TempDir()
+// TestHandleLoadChain_TargetHasReducedFrontmatter verifies that the target
+// node's frontmatter in the chain is reduced to only version and implements.
+func TestHandleLoadChain_TargetHasReducedFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
 
-	testWriteFile(t, tmp, "code-from-spec/spec/_node.md", `---
-version: 1
----
-
-# ROOT
-`)
-
-	// ROOT/b is a dependency
-	testWriteFile(t, tmp, "code-from-spec/spec/b/_node.md", `---
-version: 2
-parent_version: 1
-implements:
-  - src/b.go
----
-
-# ROOT/b
-`)
-
-	// ROOT/a with version, parent_version, depends_on, and implements
-	testWriteFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "_node.md"), testRootSpec())
+	// Build a leaf spec with extra frontmatter fields that should be stripped.
+	leafContent := `---
 version: 5
 parent_version: 1
 depends_on:
@@ -530,372 +496,249 @@ implements:
 ---
 
 # ROOT/a
-`)
 
-	testChdir(t, tmp)
+Leaf body.
+`
+	// Also create ROOT/b so chain resolution does not fail.
+	depContent := `---
+version: 2
+---
+
+# ROOT/b
+
+Dep body.
+
+# Public
+
+Dep public.
+`
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "_node.md"), leafContent)
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "b", "_node.md"), depContent)
 
 	result := testCallHandler(t, "ROOT/a")
-
-	if result.IsError {
-		t.Fatalf("expected success, got error: %s", testResultText(t, result))
-	}
+	testAssertSuccess(t, result)
 
 	text := testResultText(t, result)
 
-	// Find the ROOT/a target section and examine its frontmatter
-	sections := strings.Split(text, "<<<FILE_")
-	foundTarget := false
-
-	for _, section := range sections {
-		if section == "" {
-			continue
-		}
-		if strings.Contains(section, "node: ROOT/a\n") {
-			foundTarget = true
-
-			parts := strings.SplitN(section, "\n\n", 2)
-			if len(parts) < 2 {
-				t.Fatal("ROOT/a section missing content separator")
-			}
-			content := parts[1]
-
-			// Must contain version: 5
-			if !strings.Contains(content, "version: 5") {
-				t.Error("target section missing version field")
-			}
-			// Must contain implements
-			if !strings.Contains(content, "implements:") {
-				t.Error("target section missing implements field")
-			}
-			if !strings.Contains(content, "src/a.go") {
-				t.Error("target section missing implements path")
-			}
-			// Must NOT contain parent_version
-			if strings.Contains(content, "parent_version") {
-				t.Error("target section should not contain parent_version field")
-			}
-			// Must NOT contain depends_on
-			if strings.Contains(content, "depends_on") {
-				t.Error("target section should not contain depends_on field")
-			}
-		}
+	// The target section must contain version and implements.
+	if !strings.Contains(text, "version: 5") {
+		t.Error("expected version: 5 in reduced frontmatter")
+	}
+	if !strings.Contains(text, "src/a.go") {
+		t.Error("expected implements entry in reduced frontmatter")
 	}
 
-	if !foundTarget {
-		t.Error("did not find ROOT/a target section in output")
+	// Fields parent_version and depends_on must NOT appear in target frontmatter.
+	// They may appear in other parts of the chain text (e.g., comments), but the
+	// key signal is that the stripped fields are absent from the target section.
+	//
+	// We locate the target file section and inspect it specifically.
+	targetIdx := strings.Index(text, "node: ROOT/a\n")
+	if targetIdx < 0 {
+		t.Fatal("could not locate target section in chain output")
+	}
+	// Find the closing delimiter after the target section start.
+	endDelimIdx := strings.Index(text[targetIdx:], "<<<END_FILE_")
+	if endDelimIdx < 0 {
+		t.Fatal("could not locate end delimiter for target section")
+	}
+	targetSection := text[targetIdx : targetIdx+endDelimIdx]
+
+	if strings.Contains(targetSection, "parent_version") {
+		t.Error("parent_version must not appear in reduced frontmatter of target section")
+	}
+	if strings.Contains(targetSection, "depends_on") {
+		t.Error("depends_on must not appear in reduced frontmatter of target section")
 	}
 }
 
-// TestExistingCodeFilesIncludedInOutput verifies that existing code files
-// listed in implements are included in the output with a path: header
-// and no node: header.
-func TestExistingCodeFilesIncludedInOutput(t *testing.T) {
-	tmp := t.TempDir()
+// TestHandleLoadChain_ExistingCodeFilesIncluded verifies that when an
+// implements file exists on disk, it is included as a code section in the
+// chain output with a path: header but no node: header.
+func TestHandleLoadChain_ExistingCodeFilesIncluded(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
 
-	testWriteFile(t, tmp, "code-from-spec/spec/_node.md", `---
-version: 1
----
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "_node.md"), testRootSpec())
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "_node.md"), testLeafSpec("src/a.go"))
 
-# ROOT
-`)
-
-	testWriteFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
-version: 1
-parent_version: 1
-implements:
-  - src/a.go
----
-
-# ROOT/a
-`)
-
-	// Create the implemented file with known content
-	testWriteFile(t, tmp, "src/a.go", `package a
-
-func Hello() string { return "hello" }
-`)
-
-	testChdir(t, tmp)
+	// Create the implements file with known content.
+	const knownContent = "package a\n\n// existing source\n"
+	testWriteFile(t, filepath.Join(dir, "src", "a.go"), knownContent)
 
 	result := testCallHandler(t, "ROOT/a")
-
-	if result.IsError {
-		t.Fatalf("expected success, got error: %s", testResultText(t, result))
-	}
+	testAssertSuccess(t, result)
 
 	text := testResultText(t, result)
 
-	// Find the code file section — should have path: but no node:
-	sections := strings.Split(text, "<<<FILE_")
-	foundCode := false
-
-	for _, section := range sections {
-		if section == "" {
-			continue
-		}
-		if strings.Contains(section, "path: src/a.go") {
-			foundCode = true
-
-			// Extract the header lines (before the blank line)
-			parts := strings.SplitN(section, "\n\n", 2)
-			if len(parts) < 2 {
-				t.Fatal("code section missing content separator")
-			}
-			header := parts[0]
-			content := parts[1]
-
-			// Code files should NOT have a node: header
-			if strings.Contains(header, "node:") {
-				t.Error("code file section should not have node: header")
-			}
-
-			// Content should match what was written
-			if !strings.Contains(content, `func Hello() string { return "hello" }`) {
-				t.Error("code file content does not match written content")
-			}
-		}
+	// Must have a section with path: src/a.go but no node: header.
+	if !strings.Contains(text, "path: src/a.go") {
+		t.Error("expected path: src/a.go in chain output")
+	}
+	if !strings.Contains(text, "existing source") {
+		t.Error("expected existing source file content in chain output")
 	}
 
-	if !foundCode {
-		t.Error("did not find src/a.go code file section in output")
+	// Verify the code section does NOT have a node: header directly before the path: header.
+	// Find the section for src/a.go and check it has no node: line.
+	pathIdx := strings.Index(text, "path: src/a.go")
+	if pathIdx < 0 {
+		t.Fatal("path: src/a.go not found in chain")
+	}
+	// Look back from the path: line to find the opening delimiter for this section.
+	textBefore := text[:pathIdx]
+	lastOpenIdx := strings.LastIndex(textBefore, "<<<FILE_")
+	if lastOpenIdx < 0 {
+		t.Fatal("could not find opening delimiter for src/a.go section")
+	}
+	sectionHeader := textBefore[lastOpenIdx:]
+	if strings.Contains(sectionHeader, "node:") {
+		t.Error("code section for src/a.go must not have a node: header")
 	}
 }
 
-// TestNonExistingCodeFilesOmittedFromOutput verifies that code files
-// that don't exist on disk are not included in the output.
-func TestNonExistingCodeFilesOmittedFromOutput(t *testing.T) {
-	tmp := t.TempDir()
+// TestHandleLoadChain_NonExistingCodeFilesOmitted verifies that when an
+// implements file does NOT exist on disk, it is not included in the chain.
+func TestHandleLoadChain_NonExistingCodeFilesOmitted(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
 
-	testWriteFile(t, tmp, "code-from-spec/spec/_node.md", `---
-version: 1
----
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "_node.md"), testRootSpec())
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "_node.md"), testLeafSpec("src/a.go"))
 
-# ROOT
-`)
-
-	testWriteFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
-version: 1
-parent_version: 1
-implements:
-  - src/a.go
----
-
-# ROOT/a
-`)
-
-	// Do NOT create src/a.go
-
-	testChdir(t, tmp)
+	// Do NOT create src/a.go.
 
 	result := testCallHandler(t, "ROOT/a")
-
-	if result.IsError {
-		t.Fatalf("expected success, got error: %s", testResultText(t, result))
-	}
+	testAssertSuccess(t, result)
 
 	text := testResultText(t, result)
 
-	// The output should NOT contain a section for src/a.go
+	// The chain must not contain a section for src/a.go.
 	if strings.Contains(text, "path: src/a.go") {
-		t.Error("output should not contain a section for non-existing code file src/a.go")
+		t.Error("chain must not include section for non-existing code file src/a.go")
 	}
 }
 
-// TestAncestorWithNoPublicSection verifies that when an ancestor has no
-// # Public section, its section is included in the output but with empty content.
-func TestAncestorWithNoPublicSection(t *testing.T) {
-	tmp := t.TempDir()
+// TestHandleLoadChain_AncestorWithNoPublicSection verifies that an ancestor
+// with no # Public section is still included in the chain, but with empty
+// content in its section.
+func TestHandleLoadChain_AncestorWithNoPublicSection(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
 
-	// ROOT has no # Public section — only the node name and a private section
-	testWriteFile(t, tmp, "code-from-spec/spec/_node.md", `---
-version: 1
----
-
-# ROOT
-
-## Intent
-
-Root intent (private).
-`)
-
-	testWriteFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
-version: 1
-parent_version: 1
-implements:
-  - src/a.go
----
-
-# ROOT/a
-`)
-
-	testChdir(t, tmp)
+	// ROOT has no # Public section.
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "_node.md"), testRootSpecNoPublic())
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "_node.md"), testLeafSpec("src/a.go"))
 
 	result := testCallHandler(t, "ROOT/a")
-
-	if result.IsError {
-		t.Fatalf("expected success, got error: %s", testResultText(t, result))
-	}
+	testAssertSuccess(t, result)
 
 	text := testResultText(t, result)
 
-	// ROOT section should still be included (even though it has no # Public)
+	// ROOT section must still be present.
 	if !strings.Contains(text, "node: ROOT") {
-		t.Error("output should include ROOT ancestor section even when it has no # Public")
+		t.Error("expected ROOT section even when it has no # Public section")
 	}
 
-	// Verify ROOT section exists but has empty/minimal content
-	sections := strings.Split(text, "<<<FILE_")
-	foundRoot := false
-
-	for _, section := range sections {
-		if section == "" {
-			continue
-		}
-		if strings.Contains(section, "node: ROOT\n") {
-			foundRoot = true
-			// Private content should not be included
-			if strings.Contains(section, "Root intent (private)") {
-				t.Error("ROOT ancestor section should not contain private content")
-			}
-		}
-	}
-
-	if !foundRoot {
-		t.Error("did not find ROOT ancestor section")
+	// The private content of ROOT must not leak into its section.
+	if strings.Contains(text, "Some private content only") {
+		t.Error("private content must not appear in ROOT section when there is no # Public")
 	}
 }
 
-// --- Failure Cases ---
+// --------------------------------------------------------------------------
+// Failure case tests
+// --------------------------------------------------------------------------
 
-// TestInvalidPrefix verifies that a logical name with an invalid
-// prefix returns a tool error containing the expected message.
-func TestInvalidPrefix(t *testing.T) {
-	tmp := t.TempDir()
-	testChdir(t, tmp)
+// TestHandleLoadChain_InvalidPrefix verifies that a logical name that does
+// not start with ROOT/ or TEST/ returns a tool error.
+func TestHandleLoadChain_InvalidPrefix(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
 
 	result := testCallHandler(t, "INVALID/something")
-
-	if !result.IsError {
-		t.Fatal("expected tool error for invalid prefix")
-	}
-
-	text := testResultText(t, result)
-	if !strings.Contains(text, "target must be a ROOT/ or TEST/") {
-		t.Errorf("unexpected error message: %s", text)
-	}
+	testAssertToolError(t, result, "target must be a ROOT/ or TEST/")
 }
 
-// TestNonexistentSpecFile verifies that a logical name pointing
-// to a nonexistent spec file returns a tool error.
-func TestNonexistentSpecFile(t *testing.T) {
-	tmp := t.TempDir()
-	testChdir(t, tmp)
+// TestHandleLoadChain_NonexistentSpecFile verifies that referencing a logical
+// name whose spec file does not exist on disk returns a tool error.
+func TestHandleLoadChain_NonexistentSpecFile(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
 
+	// Do not create the spec file for ROOT/nonexistent.
 	result := testCallHandler(t, "ROOT/nonexistent")
-
+	// Must be a tool error (from ParseFrontmatter — file not found).
 	if !result.IsError {
-		t.Fatal("expected tool error for nonexistent spec file")
+		t.Fatal("expected tool error for nonexistent spec file, got success")
 	}
 }
 
-// TestNoImplements verifies that a node without implements
-// returns a tool error containing "has no implements".
-func TestNoImplements(t *testing.T) {
-	tmp := t.TempDir()
+// TestHandleLoadChain_NoImplements verifies that a node without an implements
+// field returns a tool error containing "has no implements".
+func TestHandleLoadChain_NoImplements(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
 
-	testWriteFile(t, tmp, "code-from-spec/spec/_node.md", `---
-version: 1
----
-
-# ROOT
-`)
-
-	// ROOT/a without implements
-	testWriteFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "_node.md"), testRootSpec())
+	// ROOT/a has no implements.
+	noImplSpec := `---
 version: 1
 parent_version: 1
 ---
 
 # ROOT/a
-`)
 
-	testChdir(t, tmp)
+No implements field.
+`
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "_node.md"), noImplSpec)
 
 	result := testCallHandler(t, "ROOT/a")
-
-	if !result.IsError {
-		t.Fatal("expected tool error for node with no implements")
-	}
-
-	text := testResultText(t, result)
-	if !strings.Contains(text, "has no implements") {
-		t.Errorf("unexpected error message: %s", text)
-	}
+	testAssertToolError(t, result, "has no implements")
 }
 
-// TestInvalidImplementsPathTraversal verifies that a path traversal
-// in implements causes a tool error from path validation.
-func TestInvalidImplementsPathTraversal(t *testing.T) {
-	tmp := t.TempDir()
+// TestHandleLoadChain_InvalidImplementsPathTraversal verifies that a path
+// traversal attack in implements is rejected as a tool error.
+func TestHandleLoadChain_InvalidImplementsPathTraversal(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
 
-	testWriteFile(t, tmp, "code-from-spec/spec/_node.md", `---
-version: 1
----
-
-# ROOT
-`)
-
-	testWriteFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "_node.md"), testRootSpec())
+	// ROOT/a has a traversal path in implements.
+	traversalSpec := `---
 version: 1
 parent_version: 1
 implements:
-  - "../../etc/passwd"
+  - ../../etc/passwd
 ---
 
 # ROOT/a
-`)
 
-	testChdir(t, tmp)
+Traversal attempt.
+`
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "_node.md"), traversalSpec)
 
 	result := testCallHandler(t, "ROOT/a")
-
+	// Must be a tool error from path validation.
 	if !result.IsError {
-		t.Fatal("expected tool error for path traversal in implements")
+		t.Fatal("expected tool error for traversal path in implements, got success")
 	}
 }
 
-// TestUnresolvableDependency verifies that a dependency whose spec file
-// does not exist causes a tool error from chain resolution.
-func TestUnresolvableDependency(t *testing.T) {
-	tmp := t.TempDir()
+// TestHandleLoadChain_UnresolvableDependency verifies that if a depends_on
+// entry references a node whose file does not exist, a tool error is returned.
+func TestHandleLoadChain_UnresolvableDependency(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
 
-	testWriteFile(t, tmp, "code-from-spec/spec/_node.md", `---
-version: 1
----
-
-# ROOT
-`)
-
-	testWriteFile(t, tmp, "code-from-spec/spec/a/_node.md", `---
-version: 1
-parent_version: 1
-depends_on:
-  - path: ROOT/b
-    version: 1
-implements:
-  - src/a.go
----
-
-# ROOT/a
-`)
-
-	// Do NOT create ROOT/b's spec file
-
-	testChdir(t, tmp)
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "_node.md"), testRootSpec())
+	// ROOT/a depends on ROOT/b but ROOT/b's spec file does not exist.
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "_node.md"),
+		testLeafSpecWithDepends("ROOT/b", "src/a.go"))
 
 	result := testCallHandler(t, "ROOT/a")
-
+	// Must be a tool error from chain resolution.
 	if !result.IsError {
-		t.Fatal("expected tool error for unresolvable dependency")
+		t.Fatal("expected tool error for unresolvable dependency, got success")
 	}
 }

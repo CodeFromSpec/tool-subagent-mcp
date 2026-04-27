@@ -1,6 +1,6 @@
 ---
-version: 15
-parent_version: 28
+version: 17
+parent_version: 29
 implements:
   - internal/logicalnames/logicalnames_test.go
 ---
@@ -18,42 +18,37 @@ and asserts the output.
 ### ROOT
 
 Input: `"ROOT"`
-Expect: `"code-from-spec/spec/_node.md"`, `true`.
+Expect: `"code-from-spec/_node.md"`, `true`.
 
 ### ROOT with path
 
 Input: `"ROOT/payments/processor"`
-Expect: `"code-from-spec/spec/payments/processor/_node.md"`, `true`.
+Expect: `"code-from-spec/payments/processor/_node.md"`, `true`.
 
 ### ROOT with qualifier
 
 Input: `"ROOT/payments/processor(interface)"`
-Expect: `"code-from-spec/spec/payments/processor/_node.md"`, `true`.
+Expect: `"code-from-spec/payments/processor/_node.md"`, `true`.
 
 ### ROOT with qualifier — strips qualifier from path
 
 Input: `"ROOT/x(y)"`
-Expect: `"code-from-spec/spec/x/_node.md"`, `true`.
+Expect: `"code-from-spec/x/_node.md"`, `true`.
 
 ### TEST without path
 
 Input: `"TEST"`
-Expect: `"code-from-spec/spec/default.test.md"`, `true`.
+Expect: `"code-from-spec/default.test.md"`, `true`.
 
 ### TEST canonical
 
 Input: `"TEST/domain/config"`
-Expect: `"code-from-spec/spec/domain/config/default.test.md"`, `true`.
+Expect: `"code-from-spec/domain/config/default.test.md"`, `true`.
 
 ### TEST named
 
 Input: `"TEST/domain/config(edge_cases)"`
-Expect: `"code-from-spec/spec/domain/config/edge_cases.test.md"`, `true`.
-
-### EXTERNAL
-
-Input: `"EXTERNAL/codefromspec"`
-Expect: `"code-from-spec/external/codefromspec/_external.md"`, `true`.
+Expect: `"code-from-spec/domain/config/edge_cases.test.md"`, `true`.
 
 ### Unrecognized prefix
 
@@ -63,11 +58,6 @@ Expect: `""`, `false`.
 ### Empty string
 
 Input: `""`
-Expect: `""`, `false`.
-
-### EXTERNAL without name
-
-Input: `"EXTERNAL"`
 Expect: `""`, `false`.
 
 ## HasParent
@@ -101,16 +91,6 @@ Expect: `true`, `true`.
 
 Input: `"TEST/domain/config(edge_cases)"`
 Expect: `true`, `true`.
-
-### EXTERNAL
-
-Input: `"EXTERNAL/codefromspec"`
-Expect: `false`, `true`.
-
-### EXTERNAL without name
-
-Input: `"EXTERNAL"`
-Expect: `false`, `false`.
 
 ### Empty string
 
@@ -164,11 +144,6 @@ Expect: `"ROOT/domain/config"`, `true`.
 Input: `"ROOT"`
 Expect: `""`, `false`.
 
-### EXTERNAL has no parent
-
-Input: `"EXTERNAL/codefromspec"`
-Expect: `""`, `false`.
-
 ### Invalid input
 
 Input: `""`
@@ -205,11 +180,6 @@ Expect: `false`, `true`.
 
 Input: `"TEST/x(edge_cases)"`
 Expect: `true`, `true`.
-
-### EXTERNAL
-
-Input: `"EXTERNAL/x"`
-Expect: `false`, `true`.
 
 ### Empty string
 

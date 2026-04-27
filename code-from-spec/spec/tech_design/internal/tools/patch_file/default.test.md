@@ -1,6 +1,6 @@
 ---
-version: 4
-parent_version: 4
+version: 7
+parent_version: 5
 implements:
   - internal/patch_file/patch_file_test.go
 ---
@@ -13,6 +13,18 @@ Each test uses `t.TempDir()` as the project root and working
 directory. A spec tree is created with the necessary frontmatter
 containing an `Implements` list. The handler is called with
 `PatchFileArgs` including the `LogicalName` of the node.
+
+Spec files are created at paths matching `logicalnames.PathFromLogicalName`:
+- `ROOT` → `<tmpdir>/code-from-spec/_node.md`
+- `ROOT/a` → `<tmpdir>/code-from-spec/a/_node.md`
+
+To extract text from a `*mcp.CallToolResult`, type-assert the first content
+entry to `*mcp.TextContent` and read the `Text` field:
+
+```go
+tc, ok := result.Content[0].(*mcp.TextContent)
+// tc.Text is the message string
+```
 
 Unified diffs used in tests follow the standard format:
 

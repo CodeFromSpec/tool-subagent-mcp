@@ -1,5 +1,5 @@
 ---
-version: 71
+version: 72
 parent_version: 12
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -7,7 +7,7 @@ depends_on:
   - path: ROOT/tech_design/internal/frontmatter
     version: 32
   - path: ROOT/tech_design/internal/logical_names
-    version: 28
+    version: 29
 implements:
   - internal/chainresolver/chainresolver.go
 ---

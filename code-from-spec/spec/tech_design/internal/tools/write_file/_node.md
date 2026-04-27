@@ -1,5 +1,5 @@
 ---
-version: 35
+version: 36
 parent_version: 5
 depends_on:
   - path: EXTERNAL/mcp-go-sdk
@@ -7,7 +7,7 @@ depends_on:
   - path: ROOT/tech_design/internal/frontmatter
     version: 32
   - path: ROOT/tech_design/internal/logical_names
-    version: 28
+    version: 29
   - path: ROOT/tech_design/internal/pathvalidation
     version: 11
 implements:

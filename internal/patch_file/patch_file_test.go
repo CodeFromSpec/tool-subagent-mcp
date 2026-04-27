@@ -1,10 +1,18 @@
-// code-from-spec: TEST/tech_design/internal/tools/patch_file@v4
+// spec: TEST/tech_design/internal/tools/patch_file@v7
+// code-from-spec: TEST/tech_design/internal/tools/patch_file@v7
 
-// Package patch_file provides tests for the patch_file tool handler.
-// Each test creates a fresh temp directory as its project root and
-// working directory, builds a minimal spec tree with frontmatter,
-// writes any required source files, then calls HandlePatchFile directly.
 package patch_file
+
+// Tests for HandlePatchFile.
+//
+// Each test uses t.TempDir() as the project root and working directory.
+// A spec tree is created with the necessary frontmatter containing an
+// Implements list. The handler is called with PatchFileArgs including
+// the LogicalName of the node.
+//
+// Spec files are created at paths matching logicalnames.PathFromLogicalName:
+//   - ROOT   → <tmpdir>/code-from-spec/_node.md
+//   - ROOT/a → <tmpdir>/code-from-spec/a/_node.md
 
 import (
 	"context"
@@ -17,17 +25,38 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// --------------------------------------------------------------------------
+// Test helpers
+// --------------------------------------------------------------------------
 
-// testMakeSpecTree creates a minimal spec node at
-// code-from-spec/spec/<subPath>/_node.md with YAML frontmatter that lists
-// the given implements paths. The file is created inside root.
-func testMakeSpecTree(t *testing.T, root, logicalSubPath string, implements []string) {
+// testMakeSpecFile creates a spec file at the path corresponding to the
+// given logical name inside rootDir, writing the provided YAML frontmatter.
+//
+// For ROOT/a the file path is: <rootDir>/code-from-spec/a/_node.md
+// For ROOT   the file path is: <rootDir>/code-from-spec/_node.md
+func testMakeSpecFile(t *testing.T, rootDir, logicalName string, implements []string) {
 	t.Helper()
 
-	// Build the YAML frontmatter.
+	// Build the relative path under code-from-spec.
+	// ROOT      → code-from-spec/_node.md
+	// ROOT/<x>  → code-from-spec/<x>/_node.md
+	var relPath string
+	switch logicalName {
+	case "ROOT":
+		relPath = filepath.Join("code-from-spec", "_node.md")
+	default:
+		// Strip "ROOT/" prefix and build <segments>/_node.md
+		suffix := strings.TrimPrefix(logicalName, "ROOT/")
+		segments := filepath.FromSlash(suffix)
+		relPath = filepath.Join("code-from-spec", segments, "_node.md")
+	}
+
+	fullPath := filepath.Join(rootDir, relPath)
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+		t.Fatalf("testMakeSpecFile: mkdir %s: %v", filepath.Dir(fullPath), err)
+	}
+
+	// Build frontmatter YAML.
 	var sb strings.Builder
 	sb.WriteString("---\n")
 	sb.WriteString("version: 1\n")
@@ -37,86 +66,42 @@ func testMakeSpecTree(t *testing.T, root, logicalSubPath string, implements []st
 			sb.WriteString("  - " + p + "\n")
 		}
 	}
-	sb.WriteString("---\n\n# node\n")
+	sb.WriteString("---\n\n# Node\n")
 
-	// Determine the _node.md path inside root.
-	// logicalSubPath is the part after "ROOT/" (or empty for ROOT itself).
-	var nodeMdPath string
-	if logicalSubPath == "" {
-		nodeMdPath = filepath.Join(root, "code-from-spec", "spec", "_node.md")
-	} else {
-		// Convert forward-slash logical path to OS path segments.
-		rel := filepath.FromSlash(logicalSubPath)
-		nodeMdPath = filepath.Join(root, "code-from-spec", "spec", rel, "_node.md")
-	}
-
-	if err := os.MkdirAll(filepath.Dir(nodeMdPath), 0o755); err != nil {
-		t.Fatalf("testMakeSpecTree: MkdirAll: %v", err)
-	}
-	if err := os.WriteFile(nodeMdPath, []byte(sb.String()), 0o644); err != nil {
-		t.Fatalf("testMakeSpecTree: WriteFile: %v", err)
+	if err := os.WriteFile(fullPath, []byte(sb.String()), 0o644); err != nil {
+		t.Fatalf("testMakeSpecFile: write %s: %v", fullPath, err)
 	}
 }
 
-// testWriteFile writes content to root/<relPath>, creating directories as
-// needed. relPath uses forward slashes.
-func testWriteFile(t *testing.T, root, relPath, content string) {
+// testWriteFile creates a file (and parent directories) at
+// filepath.Join(rootDir, relPath) with the given content.
+func testWriteFile(t *testing.T, rootDir, relPath, content string) {
 	t.Helper()
-	abs := filepath.Join(root, filepath.FromSlash(relPath))
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-		t.Fatalf("testWriteFile: MkdirAll: %v", err)
+	full := filepath.Join(rootDir, filepath.FromSlash(relPath))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatalf("testWriteFile: mkdir: %v", err)
 	}
-	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
-		t.Fatalf("testWriteFile: WriteFile: %v", err)
+	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+		t.Fatalf("testWriteFile: write: %v", err)
 	}
 }
 
-// testReadFile reads root/<relPath> and returns its content as a string.
-func testReadFile(t *testing.T, root, relPath string) string {
+// testReadFile reads and returns the content of filepath.Join(rootDir, relPath).
+func testReadFile(t *testing.T, rootDir, relPath string) string {
 	t.Helper()
-	abs := filepath.Join(root, filepath.FromSlash(relPath))
-	data, err := os.ReadFile(abs)
+	full := filepath.Join(rootDir, filepath.FromSlash(relPath))
+	data, err := os.ReadFile(full)
 	if err != nil {
 		t.Fatalf("testReadFile: %v", err)
 	}
 	return string(data)
 }
 
-// testCallHandler calls HandlePatchFile with the given args after changing
-// the working directory to root. It restores the working directory on cleanup.
-func testCallHandler(t *testing.T, root string, args PatchFileArgs) *mcp.CallToolResult {
-	t.Helper()
-
-	// Save and restore the working directory.
-	orig, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("testCallHandler: Getwd: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chdir(orig); err != nil {
-			t.Errorf("testCallHandler cleanup: Chdir: %v", err)
-		}
-	})
-	if err := os.Chdir(root); err != nil {
-		t.Fatalf("testCallHandler: Chdir to %s: %v", root, err)
-	}
-
-	result, _, err := HandlePatchFile(context.Background(), &mcp.CallToolRequest{}, args)
-	if err != nil {
-		t.Fatalf("testCallHandler: unexpected Go error (should always be nil): %v", err)
-	}
-	return result
-}
-
-// testIsError returns true when the CallToolResult has IsError set.
-func testIsError(result *mcp.CallToolResult) bool {
-	return result != nil && result.IsError
-}
-
-// testResultText extracts the text from the first TextContent in the result.
+// testResultText extracts the text from the first content entry of a
+// *mcp.CallToolResult.
 func testResultText(t *testing.T, result *mcp.CallToolResult) string {
 	t.Helper()
-	if result == nil || len(result.Content) == 0 {
+	if len(result.Content) == 0 {
 		t.Fatal("testResultText: result has no content")
 	}
 	tc, ok := result.Content[0].(*mcp.TextContent)
@@ -126,454 +111,563 @@ func testResultText(t *testing.T, result *mcp.CallToolResult) string {
 	return tc.Text
 }
 
-// ---------------------------------------------------------------------------
+// testCall invokes HandlePatchFile, changing os working directory to rootDir
+// for the duration of the call and restoring it afterwards.
+func testCall(t *testing.T, rootDir string, args PatchFileArgs) *mcp.CallToolResult {
+	t.Helper()
+
+	// Save and restore working directory so each test is isolated.
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("testCall: getwd: %v", err)
+	}
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatalf("testCall: chdir to %s: %v", rootDir, err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(origWD); err != nil {
+			t.Errorf("testCall: restore wd: %v", err)
+		}
+	})
+
+	result, _, err := HandlePatchFile(context.Background(), nil, args)
+	if err != nil {
+		t.Fatalf("testCall: unexpected Go error: %v", err)
+	}
+	return result
+}
+
+// --------------------------------------------------------------------------
 // Happy path tests
-// ---------------------------------------------------------------------------
+// --------------------------------------------------------------------------
 
-// TestHandlePatchFile_AppliesSimpleDiff verifies that a basic single-hunk
-// diff is applied correctly and the file on disk is updated.
+// TestHandlePatchFile_AppliesSimpleDiff verifies that a diff changing one
+// string in the file is applied correctly.
 func TestHandlePatchFile_AppliesSimpleDiff(t *testing.T) {
-	root := t.TempDir()
-	testMakeSpecTree(t, root, "a", []string{"output/file.go"})
+	rootDir := t.TempDir()
 
-	initial := "package main\n\nfunc hello() string {\n\treturn \"hello\"\n}\n"
-	testWriteFile(t, root, "output/file.go", initial)
+	// Create spec node with implements.
+	testMakeSpecFile(t, rootDir, "ROOT/a", []string{"output/file.go"})
 
-	diff := "--- a/output/file.go\n+++ b/output/file.go\n@@ -3,3 +3,3 @@\n func hello() string {\n-\treturn \"hello\"\n+\treturn \"world\"\n }\n"
+	// Write the initial file.
+	initial := `package main
 
-	result := testCallHandler(t, root, PatchFileArgs{
+func hello() string {
+	return "hello"
+}
+`
+	testWriteFile(t, rootDir, "output/file.go", initial)
+
+	// Diff changes "hello" to "world".
+	diff := `--- a/output/file.go
++++ b/output/file.go
+@@ -3,3 +3,3 @@
+ func hello() string {
+-	return "hello"
++	return "world"
+ }
+`
+
+	result := testCall(t, rootDir, PatchFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "output/file.go",
 		Diff:        diff,
 	})
 
-	if testIsError(result) {
-		t.Fatalf("expected success, got error: %s", testResultText(t, result))
+	if result.IsError {
+		t.Fatalf("expected success, got tool error: %s", testResultText(t, result))
 	}
 
-	got := testResultText(t, result)
-	if got != "patched output/file.go" {
-		t.Errorf("unexpected result text: %q", got)
+	text := testResultText(t, result)
+	if text != "patched output/file.go" {
+		t.Errorf("unexpected success message: %q", text)
 	}
 
-	content := testReadFile(t, root, "output/file.go")
-	if !strings.Contains(content, `"world"`) {
-		t.Errorf("expected 'world' in patched file, got:\n%s", content)
+	// Verify the file on disk.
+	got := testReadFile(t, rootDir, "output/file.go")
+	if strings.Contains(got, `"hello"`) {
+		t.Errorf("file still contains old string %q:\n%s", `"hello"`, got)
 	}
-	if strings.Contains(content, `"hello"`) {
-		t.Errorf("expected 'hello' to be replaced in patched file, got:\n%s", content)
+	if !strings.Contains(got, `"world"`) {
+		t.Errorf("file does not contain new string %q:\n%s", `"world"`, got)
 	}
 }
 
 // TestHandlePatchFile_AppliesMultiHunkDiff verifies that a diff with two
-// separate hunks is applied and both modifications are reflected on disk.
+// separate hunks is applied correctly.
 func TestHandlePatchFile_AppliesMultiHunkDiff(t *testing.T) {
-	root := t.TempDir()
-	testMakeSpecTree(t, root, "a", []string{"output/file.go"})
+	rootDir := t.TempDir()
 
-	initial := strings.Join([]string{
-		"package main",
-		"",
-		"func foo() string {",
-		"\treturn \"foo\"",
-		"}",
-		"",
-		"func bar() string {",
-		"\treturn \"bar\"",
-		"}",
-		"",
-	}, "\n")
-	testWriteFile(t, root, "output/file.go", initial)
+	testMakeSpecFile(t, rootDir, "ROOT/a", []string{"output/file.go"})
 
-	// Two-hunk diff: change "foo" → "FOO" and "bar" → "BAR".
-	diff := "--- a/output/file.go\n+++ b/output/file.go\n" +
-		"@@ -3,3 +3,3 @@\n func foo() string {\n-\treturn \"foo\"\n+\treturn \"FOO\"\n }\n" +
-		"@@ -7,3 +7,3 @@\n func bar() string {\n-\treturn \"bar\"\n+\treturn \"BAR\"\n }\n"
+	initial := `package main
 
-	result := testCallHandler(t, root, PatchFileArgs{
+func greet() string {
+	return "hello"
+}
+
+func farewell() string {
+	return "goodbye"
+}
+`
+	testWriteFile(t, rootDir, "output/file.go", initial)
+
+	// Two hunks: change "hello" → "hi" and "goodbye" → "bye".
+	diff := `--- a/output/file.go
++++ b/output/file.go
+@@ -3,3 +3,3 @@
+ func greet() string {
+-	return "hello"
++	return "hi"
+ }
+@@ -7,3 +7,3 @@
+ func farewell() string {
+-	return "goodbye"
++	return "bye"
+ }
+`
+
+	result := testCall(t, rootDir, PatchFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "output/file.go",
 		Diff:        diff,
 	})
 
-	if testIsError(result) {
-		t.Fatalf("expected success, got error: %s", testResultText(t, result))
+	if result.IsError {
+		t.Fatalf("expected success, got tool error: %s", testResultText(t, result))
 	}
 
-	content := testReadFile(t, root, "output/file.go")
-	if !strings.Contains(content, `"FOO"`) {
-		t.Errorf("expected 'FOO' in patched file, got:\n%s", content)
+	got := testReadFile(t, rootDir, "output/file.go")
+	if !strings.Contains(got, `"hi"`) {
+		t.Errorf("first hunk not applied; missing %q:\n%s", `"hi"`, got)
 	}
-	if !strings.Contains(content, `"BAR"`) {
-		t.Errorf("expected 'BAR' in patched file, got:\n%s", content)
+	if !strings.Contains(got, `"bye"`) {
+		t.Errorf("second hunk not applied; missing %q:\n%s", `"bye"`, got)
 	}
 }
 
-// TestHandlePatchFile_AppliesDiffThatAddsLines verifies that a diff adding
-// new lines (no removals) is applied correctly.
+// TestHandlePatchFile_AppliesDiffThatAddsLines verifies that a diff that
+// only adds lines is applied correctly.
 func TestHandlePatchFile_AppliesDiffThatAddsLines(t *testing.T) {
-	root := t.TempDir()
-	testMakeSpecTree(t, root, "a", []string{"output/file.go"})
+	rootDir := t.TempDir()
 
-	initial := "package main\n\nfunc hello() {}\n"
-	testWriteFile(t, root, "output/file.go", initial)
+	testMakeSpecFile(t, rootDir, "ROOT/a", []string{"output/file.go"})
 
-	// Add a new function after the existing one.
-	diff := "--- a/output/file.go\n+++ b/output/file.go\n@@ -3,1 +3,4 @@\n func hello() {}\n+\n+func world() {\n+\t// added\n+}\n"
+	initial := `package main
 
-	result := testCallHandler(t, root, PatchFileArgs{
+func foo() {}
+`
+	testWriteFile(t, rootDir, "output/file.go", initial)
+
+	// Diff adds a new function after foo.
+	diff := `--- a/output/file.go
++++ b/output/file.go
+@@ -3,1 +3,4 @@
+ func foo() {}
++
++func bar() {}
++
+`
+
+	result := testCall(t, rootDir, PatchFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "output/file.go",
 		Diff:        diff,
 	})
 
-	if testIsError(result) {
-		t.Fatalf("expected success, got error: %s", testResultText(t, result))
+	if result.IsError {
+		t.Fatalf("expected success, got tool error: %s", testResultText(t, result))
 	}
 
-	content := testReadFile(t, root, "output/file.go")
-	if !strings.Contains(content, "func world()") {
-		t.Errorf("expected 'func world()' in patched file, got:\n%s", content)
+	got := testReadFile(t, rootDir, "output/file.go")
+	if !strings.Contains(got, "func bar()") {
+		t.Errorf("added lines not present in file:\n%s", got)
 	}
 }
 
-// TestHandlePatchFile_AppliesDiffThatRemovesLines verifies that a diff
-// removing lines (no additions) is applied correctly.
+// TestHandlePatchFile_AppliesDiffThatRemovesLines verifies that a diff that
+// only removes lines is applied correctly.
 func TestHandlePatchFile_AppliesDiffThatRemovesLines(t *testing.T) {
-	root := t.TempDir()
-	testMakeSpecTree(t, root, "a", []string{"output/file.go"})
+	rootDir := t.TempDir()
 
-	initial := "package main\n\n// TODO: remove this\nfunc hello() {}\n"
-	testWriteFile(t, root, "output/file.go", initial)
+	testMakeSpecFile(t, rootDir, "ROOT/a", []string{"output/file.go"})
 
-	// Remove the TODO comment line.
-	diff := "--- a/output/file.go\n+++ b/output/file.go\n@@ -2,3 +2,2 @@\n \n-// TODO: remove this\n func hello() {}\n"
+	initial := `package main
 
-	result := testCallHandler(t, root, PatchFileArgs{
+func foo() {}
+
+func bar() {}
+`
+	testWriteFile(t, rootDir, "output/file.go", initial)
+
+	// Diff removes bar().
+	diff := `--- a/output/file.go
++++ b/output/file.go
+@@ -4,2 +4,0 @@
+-
+-func bar() {}
+`
+
+	result := testCall(t, rootDir, PatchFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "output/file.go",
 		Diff:        diff,
 	})
 
-	if testIsError(result) {
-		t.Fatalf("expected success, got error: %s", testResultText(t, result))
+	if result.IsError {
+		t.Fatalf("expected success, got tool error: %s", testResultText(t, result))
 	}
 
-	content := testReadFile(t, root, "output/file.go")
-	if strings.Contains(content, "TODO") {
-		t.Errorf("expected TODO line to be removed, got:\n%s", content)
+	got := testReadFile(t, rootDir, "output/file.go")
+	if strings.Contains(got, "func bar()") {
+		t.Errorf("removed lines still present in file:\n%s", got)
 	}
 }
 
-// TestHandlePatchFile_PathWithBackslashesNormalized verifies that a path
-// supplied with Windows-style backslashes is normalized to forward slashes
-// before validation and matching. Only runs on Windows.
-func TestHandlePatchFile_PathWithBackslashesNormalized(t *testing.T) {
+// TestHandlePatchFile_BackslashPathNormalized verifies that a path with
+// backslashes (Windows-style) is normalized to forward slashes before
+// validation. This test is only meaningful on Windows.
+func TestHandlePatchFile_BackslashPathNormalized(t *testing.T) {
 	if runtime.GOOS != "windows" {
-		t.Skip("backslash normalization test only runs on Windows")
+		t.Skip("Windows-only test")
 	}
 
-	root := t.TempDir()
-	testMakeSpecTree(t, root, "a", []string{"output/file.go"})
+	rootDir := t.TempDir()
 
-	initial := "package main\n\nfunc hello() string {\n\treturn \"hello\"\n}\n"
-	testWriteFile(t, root, "output/file.go", initial)
+	testMakeSpecFile(t, rootDir, "ROOT/a", []string{"output/file.go"})
 
-	diff := "--- a/output/file.go\n+++ b/output/file.go\n@@ -3,3 +3,3 @@\n func hello() string {\n-\treturn \"hello\"\n+\treturn \"world\"\n }\n"
+	initial := `package main
 
-	// Supply path with Windows backslashes.
-	result := testCallHandler(t, root, PatchFileArgs{
+func hello() string {
+	return "hello"
+}
+`
+	testWriteFile(t, rootDir, "output/file.go", initial)
+
+	diff := `--- a/output/file.go
++++ b/output/file.go
+@@ -3,3 +3,3 @@
+ func hello() string {
+-	return "hello"
++	return "world"
+ }
+`
+
+	// Use backslash path — the handler must normalize it.
+	result := testCall(t, rootDir, PatchFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        `output\file.go`,
 		Diff:        diff,
 	})
 
-	if testIsError(result) {
-		t.Fatalf("expected success, got error: %s", testResultText(t, result))
+	if result.IsError {
+		t.Fatalf("expected success, got tool error: %s", testResultText(t, result))
 	}
 
-	got := testResultText(t, result)
-	// The result message should use forward slashes.
-	if got != "patched output/file.go" {
-		t.Errorf("unexpected result text: %q", got)
+	text := testResultText(t, result)
+	if text != "patched output/file.go" {
+		t.Errorf("unexpected success message: %q", text)
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Failure cases
-// ---------------------------------------------------------------------------
+// --------------------------------------------------------------------------
+// Failure case tests
+// --------------------------------------------------------------------------
 
 // TestHandlePatchFile_InvalidLogicalNamePrefix verifies that a logical name
-// not starting with ROOT/, TEST/, ROOT, or TEST produces a tool error.
+// not starting with ROOT or TEST is rejected.
 func TestHandlePatchFile_InvalidLogicalNamePrefix(t *testing.T) {
-	root := t.TempDir()
+	rootDir := t.TempDir()
 
-	result := testCallHandler(t, root, PatchFileArgs{
+	result := testCall(t, rootDir, PatchFileArgs{
 		LogicalName: "EXTERNAL/something",
-		Path:        "some/file.go",
-		Diff:        "",
+		Path:        "output/file.go",
+		Diff:        "--- a\n+++ b\n",
 	})
 
-	if !testIsError(result) {
-		t.Fatalf("expected tool error for invalid logical name prefix, got success: %s", testResultText(t, result))
+	if !result.IsError {
+		t.Fatalf("expected tool error, got success: %s", testResultText(t, result))
 	}
 }
 
 // TestHandlePatchFile_NonexistentLogicalName verifies that a logical name
-// that maps to a missing spec file returns a tool error.
+// that resolves to a nonexistent spec file returns a tool error.
 func TestHandlePatchFile_NonexistentLogicalName(t *testing.T) {
-	root := t.TempDir()
-	// Do NOT create the spec file for ROOT/nonexistent.
+	rootDir := t.TempDir()
+	// Deliberately do NOT create the spec file for ROOT/nonexistent.
 
-	result := testCallHandler(t, root, PatchFileArgs{
+	result := testCall(t, rootDir, PatchFileArgs{
 		LogicalName: "ROOT/nonexistent",
-		Path:        "some/file.go",
-		Diff:        "",
+		Path:        "output/file.go",
+		Diff:        "--- a\n+++ b\n",
 	})
 
-	if !testIsError(result) {
-		t.Fatalf("expected tool error for nonexistent logical name, got success: %s", testResultText(t, result))
+	if !result.IsError {
+		t.Fatalf("expected tool error, got success: %s", testResultText(t, result))
 	}
 }
 
-// TestHandlePatchFile_PathNotInImplements verifies that supplying a path not
-// listed in implements returns a tool error mentioning "path not allowed" and
-// the allowed paths.
+// TestHandlePatchFile_PathNotInImplements verifies that a path not listed in
+// the node's implements returns a tool error mentioning "path not allowed".
 func TestHandlePatchFile_PathNotInImplements(t *testing.T) {
-	root := t.TempDir()
-	testMakeSpecTree(t, root, "a", []string{"allowed/file.go"})
+	rootDir := t.TempDir()
 
-	result := testCallHandler(t, root, PatchFileArgs{
+	testMakeSpecFile(t, rootDir, "ROOT/a", []string{"allowed/file.go"})
+
+	result := testCall(t, rootDir, PatchFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "other/file.go",
-		Diff:        "",
+		Diff:        "--- a\n+++ b\n",
 	})
 
-	if !testIsError(result) {
-		t.Fatalf("expected tool error for path not in implements, got success: %s", testResultText(t, result))
+	if !result.IsError {
+		t.Fatalf("expected tool error, got success: %s", testResultText(t, result))
 	}
 
 	text := testResultText(t, result)
 	if !strings.Contains(text, "path not allowed") {
-		t.Errorf("expected 'path not allowed' in error message, got: %s", text)
+		t.Errorf("expected error to contain %q, got: %s", "path not allowed", text)
 	}
 	if !strings.Contains(text, "allowed/file.go") {
-		t.Errorf("expected allowed path listed in error message, got: %s", text)
+		t.Errorf("expected error to list allowed paths, got: %s", text)
 	}
 }
 
-// TestHandlePatchFile_PathTraversalAttempt verifies that a path containing
-// directory traversal sequences listed in implements is rejected by
-// ValidatePath.
+// TestHandlePatchFile_PathTraversalAttempt verifies that a traversal path
+// listed in implements is caught by ValidatePath.
 func TestHandlePatchFile_PathTraversalAttempt(t *testing.T) {
-	root := t.TempDir()
-	testMakeSpecTree(t, root, "a", []string{"../../etc/passwd"})
+	rootDir := t.TempDir()
 
-	result := testCallHandler(t, root, PatchFileArgs{
+	// The spec lists a traversal path in implements — ValidatePath must block it.
+	testMakeSpecFile(t, rootDir, "ROOT/a", []string{"../../etc/passwd"})
+
+	result := testCall(t, rootDir, PatchFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "../../etc/passwd",
-		Diff:        "",
+		Diff:        "--- a\n+++ b\n",
 	})
 
-	if !testIsError(result) {
-		t.Fatalf("expected tool error for path traversal, got success: %s", testResultText(t, result))
+	if !result.IsError {
+		t.Fatalf("expected tool error, got success: %s", testResultText(t, result))
 	}
 }
 
-// TestHandlePatchFile_EmptyPath verifies that an empty path returns a tool
-// error mentioning "path is empty".
+// TestHandlePatchFile_EmptyPath verifies that an empty path is rejected with
+// a message containing "path is empty".
 func TestHandlePatchFile_EmptyPath(t *testing.T) {
-	root := t.TempDir()
-	testMakeSpecTree(t, root, "a", []string{"some/file.go"})
+	rootDir := t.TempDir()
 
-	result := testCallHandler(t, root, PatchFileArgs{
+	testMakeSpecFile(t, rootDir, "ROOT/a", []string{"some/file.go"})
+
+	result := testCall(t, rootDir, PatchFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "",
-		Diff:        "",
+		Diff:        "--- a\n+++ b\n",
 	})
 
-	if !testIsError(result) {
-		t.Fatalf("expected tool error for empty path, got success: %s", testResultText(t, result))
+	if !result.IsError {
+		t.Fatalf("expected tool error, got success: %s", testResultText(t, result))
 	}
 
 	text := testResultText(t, result)
 	if !strings.Contains(text, "path is empty") {
-		t.Errorf("expected 'path is empty' in error message, got: %s", text)
+		t.Errorf("expected error to contain %q, got: %s", "path is empty", text)
 	}
 }
 
 // TestHandlePatchFile_SymlinkEscapingProjectRoot verifies that a symlink
-// pointing outside the project root is rejected by ValidatePath.
+// inside the temp dir pointing outside it is rejected.
 func TestHandlePatchFile_SymlinkEscapingProjectRoot(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		// Symlink creation on Windows requires elevated privileges or
-		// Developer Mode enabled — skip to avoid test infrastructure issues.
-		t.Skip("symlink test skipped on Windows")
+		t.Skip("symlink creation may require elevated privileges on Windows")
 	}
 
-	root := t.TempDir()
-	outside := t.TempDir() // a directory outside root
+	rootDir := t.TempDir()
+	outsideDir := t.TempDir()
 
-	// Create a symlink inside root pointing outside.
-	symlinkPath := filepath.Join(root, "escape")
-	if err := os.Symlink(outside, symlinkPath); err != nil {
-		t.Fatalf("failed to create symlink: %v", err)
+	// Create a symlink inside rootDir that points outside rootDir.
+	symlinkPath := filepath.Join(rootDir, "escape_link")
+	if err := os.Symlink(outsideDir, symlinkPath); err != nil {
+		t.Fatalf("os.Symlink: %v", err)
 	}
 
-	// Register the symlink-based path in implements.
-	testMakeSpecTree(t, root, "a", []string{"escape/secret.go"})
+	// Use a path through the symlink as the implements entry.
+	escapePath := "escape_link/evil.go"
 
-	result := testCallHandler(t, root, PatchFileArgs{
+	testMakeSpecFile(t, rootDir, "ROOT/a", []string{escapePath})
+
+	result := testCall(t, rootDir, PatchFileArgs{
 		LogicalName: "ROOT/a",
-		Path:        "escape/secret.go",
-		Diff:        "",
+		Path:        escapePath,
+		Diff:        "--- a\n+++ b\n",
 	})
 
-	if !testIsError(result) {
-		t.Fatalf("expected tool error for symlink escaping project root, got success: %s", testResultText(t, result))
+	if !result.IsError {
+		t.Fatalf("expected tool error, got success: %s", testResultText(t, result))
 	}
 
 	text := testResultText(t, result)
 	if !strings.Contains(text, "resolves outside project root") {
-		t.Errorf("expected 'resolves outside project root' in error message, got: %s", text)
+		t.Errorf("expected error to contain %q, got: %s", "resolves outside project root", text)
 	}
 }
 
-// TestHandlePatchFile_FileDoesNotExist verifies that patching a non-existent
-// file returns a tool error with the appropriate message.
+// TestHandlePatchFile_FileDoesNotExist verifies that patching a file that has
+// not been created returns a tool error mentioning "file does not exist".
 func TestHandlePatchFile_FileDoesNotExist(t *testing.T) {
-	root := t.TempDir()
-	testMakeSpecTree(t, root, "a", []string{"output/file.go"})
-	// Do NOT create output/file.go.
+	rootDir := t.TempDir()
 
-	diff := "--- a/output/file.go\n+++ b/output/file.go\n@@ -1,1 +1,1 @@\n-old\n+new\n"
+	testMakeSpecFile(t, rootDir, "ROOT/a", []string{"output/file.go"})
+	// Deliberately do NOT create output/file.go.
 
-	result := testCallHandler(t, root, PatchFileArgs{
+	diff := `--- a/output/file.go
++++ b/output/file.go
+@@ -1,1 +1,1 @@
+-old
++new
+`
+
+	result := testCall(t, rootDir, PatchFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "output/file.go",
 		Diff:        diff,
 	})
 
-	if !testIsError(result) {
-		t.Fatalf("expected tool error for non-existent file, got success: %s", testResultText(t, result))
+	if !result.IsError {
+		t.Fatalf("expected tool error, got success: %s", testResultText(t, result))
 	}
 
 	text := testResultText(t, result)
 	if !strings.Contains(text, "file does not exist: output/file.go") {
-		t.Errorf("expected 'file does not exist: output/file.go' in error, got: %s", text)
+		t.Errorf("expected error to contain %q, got: %s", "file does not exist: output/file.go", text)
 	}
 }
 
-// TestHandlePatchFile_MalformedDiff verifies that a completely malformed diff
-// string (that produces zero file entries from gitdiff.Parse) returns a tool
-// error mentioning "diff must contain exactly one file".
-// Note: gitdiff.Parse does not return an error for completely malformed input —
-// it returns zero file entries, which is caught by the "exactly one file" check.
+// TestHandlePatchFile_MalformedDiff verifies that completely malformed diff
+// input (not parseable as any diff) is rejected.
+// gitdiff.Parse does not error on completely malformed input — it returns
+// zero file entries, which is caught by the "exactly one file" check.
 func TestHandlePatchFile_MalformedDiff(t *testing.T) {
-	root := t.TempDir()
-	testMakeSpecTree(t, root, "a", []string{"output/file.go"})
-	testWriteFile(t, root, "output/file.go", "package main\n")
+	rootDir := t.TempDir()
 
-	result := testCallHandler(t, root, PatchFileArgs{
+	testMakeSpecFile(t, rootDir, "ROOT/a", []string{"output/file.go"})
+	testWriteFile(t, rootDir, "output/file.go", "package main\n")
+
+	result := testCall(t, rootDir, PatchFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "output/file.go",
 		Diff:        "this is not a valid diff",
 	})
 
-	if !testIsError(result) {
-		t.Fatalf("expected tool error for malformed diff, got success: %s", testResultText(t, result))
+	if !result.IsError {
+		t.Fatalf("expected tool error, got success: %s", testResultText(t, result))
 	}
 
 	text := testResultText(t, result)
-	// gitdiff.Parse returns zero entries for completely malformed input,
-	// so the error is "diff must contain exactly one file" (step 10).
 	if !strings.Contains(text, "diff must contain exactly one file") {
-		t.Errorf("expected 'diff must contain exactly one file' in error, got: %s", text)
+		t.Errorf("expected error to contain %q, got: %s", "diff must contain exactly one file", text)
 	}
 }
 
 // TestHandlePatchFile_DiffWithZeroFileEntries verifies that an empty or
-// whitespace-only diff returns a tool error mentioning
-// "diff must contain exactly one file".
+// whitespace-only diff is rejected.
 func TestHandlePatchFile_DiffWithZeroFileEntries(t *testing.T) {
-	root := t.TempDir()
-	testMakeSpecTree(t, root, "a", []string{"output/file.go"})
-	testWriteFile(t, root, "output/file.go", "package main\n")
+	rootDir := t.TempDir()
 
-	result := testCallHandler(t, root, PatchFileArgs{
-		LogicalName: "ROOT/a",
-		Path:        "output/file.go",
-		Diff:        "   \n",
-	})
+	testMakeSpecFile(t, rootDir, "ROOT/a", []string{"output/file.go"})
+	testWriteFile(t, rootDir, "output/file.go", "package main\n")
 
-	if !testIsError(result) {
-		t.Fatalf("expected tool error for zero file entries, got success: %s", testResultText(t, result))
-	}
+	for _, emptyDiff := range []string{"", "   ", "\n\n"} {
+		result := testCall(t, rootDir, PatchFileArgs{
+			LogicalName: "ROOT/a",
+			Path:        "output/file.go",
+			Diff:        emptyDiff,
+		})
 
-	text := testResultText(t, result)
-	if !strings.Contains(text, "diff must contain exactly one file") {
-		t.Errorf("expected 'diff must contain exactly one file' in error, got: %s", text)
+		if !result.IsError {
+			t.Fatalf("expected tool error for empty diff %q, got success: %s", emptyDiff, testResultText(t, result))
+		}
+
+		text := testResultText(t, result)
+		if !strings.Contains(text, "diff must contain exactly one file") {
+			t.Errorf("expected error to contain %q for diff %q, got: %s", "diff must contain exactly one file", emptyDiff, text)
+		}
 	}
 }
 
 // TestHandlePatchFile_DiffWithMultipleFileEntries verifies that a diff
-// touching more than one file returns a tool error mentioning
-// "diff must contain exactly one file".
+// spanning multiple files is rejected.
 func TestHandlePatchFile_DiffWithMultipleFileEntries(t *testing.T) {
-	root := t.TempDir()
-	testMakeSpecTree(t, root, "a", []string{"output/file.go"})
-	testWriteFile(t, root, "output/file.go", "package main\n")
+	rootDir := t.TempDir()
 
-	// A diff that modifies two different files.
-	diff := "--- a/output/file.go\n+++ b/output/file.go\n@@ -1,1 +1,1 @@\n-package main\n+package x\n" +
-		"--- a/other/file.go\n+++ b/other/file.go\n@@ -1,1 +1,1 @@\n-package main\n+package y\n"
+	testMakeSpecFile(t, rootDir, "ROOT/a", []string{"output/file.go"})
+	testWriteFile(t, rootDir, "output/file.go", "package main\n")
 
-	result := testCallHandler(t, root, PatchFileArgs{
+	// Diff modifies two different files.
+	diff := `--- a/output/file.go
++++ b/output/file.go
+@@ -1,1 +1,1 @@
+-package main
++package mainx
+--- a/output/other.go
++++ b/output/other.go
+@@ -1,1 +1,1 @@
+-old
++new
+`
+
+	result := testCall(t, rootDir, PatchFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "output/file.go",
 		Diff:        diff,
 	})
 
-	if !testIsError(result) {
-		t.Fatalf("expected tool error for multiple file entries, got success: %s", testResultText(t, result))
+	if !result.IsError {
+		t.Fatalf("expected tool error, got success: %s", testResultText(t, result))
 	}
 
 	text := testResultText(t, result)
 	if !strings.Contains(text, "diff must contain exactly one file") {
-		t.Errorf("expected 'diff must contain exactly one file' in error, got: %s", text)
+		t.Errorf("expected error to contain %q, got: %s", "diff must contain exactly one file", text)
 	}
 }
 
 // TestHandlePatchFile_DiffContextDoesNotMatchFile verifies that a diff whose
-// context lines do not match the file's actual content returns a tool error.
-// Per the spec, gitdiff.Parse may reject context-mismatched diffs as
-// semantically invalid (step 9), or gitdiff.Apply may reject them (step 11).
-// This test accepts either "failed to parse diff" or
-// "failed to apply diff to output/file.go" as valid error messages.
+// context lines do not match the file's actual content is rejected.
+// Per the spec, gitdiff.Parse rejects such diffs as semantically invalid
+// (e.g. "fragment contains no changes"), so the error is caught at parse
+// time (step 9) and the message contains "failed to parse diff".
 func TestHandlePatchFile_DiffContextDoesNotMatchFile(t *testing.T) {
-	root := t.TempDir()
-	testMakeSpecTree(t, root, "a", []string{"output/file.go"})
-	testWriteFile(t, root, "output/file.go", "package main\n\nfunc actual() {}\n")
+	rootDir := t.TempDir()
 
-	// The context line refers to "func different()" which does not exist.
-	diff := "--- a/output/file.go\n+++ b/output/file.go\n@@ -3,1 +3,1 @@\n func different() {}\n-func removed() {}\n+func added() {}\n"
+	testMakeSpecFile(t, rootDir, "ROOT/a", []string{"output/file.go"})
+	// Write a file whose content does NOT match the diff's context lines.
+	testWriteFile(t, rootDir, "output/file.go", "package main\n\nfunc foo() {}\n")
 
-	result := testCallHandler(t, root, PatchFileArgs{
+	// Diff references context lines that do not exist in the file.
+	diff := `--- a/output/file.go
++++ b/output/file.go
+@@ -1,3 +1,3 @@
+ this line does not exist in the file
+-old content that is not there
++new content
+ another missing line
+`
+
+	result := testCall(t, rootDir, PatchFileArgs{
 		LogicalName: "ROOT/a",
 		Path:        "output/file.go",
 		Diff:        diff,
 	})
 
-	if !testIsError(result) {
-		t.Fatalf("expected tool error for mismatched diff context, got success: %s", testResultText(t, result))
+	if !result.IsError {
+		t.Fatalf("expected tool error, got success: %s", testResultText(t, result))
 	}
 
 	text := testResultText(t, result)
-	// The spec notes that gitdiff.Parse may catch this as a semantic error
-	// ("failed to parse diff"), or gitdiff.Apply may catch it
-	// ("failed to apply diff to output/file.go"). Accept either.
-	if !strings.Contains(text, "failed to apply diff to output/file.go") &&
-		!strings.Contains(text, "failed to parse diff") {
-		t.Errorf("expected 'failed to apply diff to output/file.go' or 'failed to parse diff' in error, got: %s", text)
+	// Per spec note: gitdiff.Parse catches context mismatches as parse errors.
+	if !strings.Contains(text, "failed to parse diff") && !strings.Contains(text, "failed to apply diff") {
+		t.Errorf("expected error to contain %q or %q, got: %s",
+			"failed to parse diff", "failed to apply diff", text)
 	}
 }

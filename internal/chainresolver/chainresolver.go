@@ -1,4 +1,4 @@
-// code-from-spec: ROOT/tech_design/internal/chain_resolver@v71
+// code-from-spec: ROOT/tech_design/internal/chain_resolver@v72
 
 // Package chainresolver resolves the ordered list of files that form the
 // chain for a given target logical name. The chain is separated into:

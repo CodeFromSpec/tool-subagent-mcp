@@ -1,5 +1,5 @@
 // Package logicalnames centralizes conversion between logical names and file paths.
-// code-from-spec: ROOT/tech_design/internal/logical_names@v28
+// code-from-spec: ROOT/tech_design/internal/logical_names@v29
 package logicalnames
 
 import (
@@ -15,13 +15,12 @@ import (
 // so ROOT/x(y) resolves to the same path as ROOT/x.
 //
 // Rules:
-//   - ROOT                      → code-from-spec/spec/_node.md
-//   - ROOT/<path>               → code-from-spec/spec/<path>/_node.md
-//   - ROOT/<path>(<qualifier>)  → code-from-spec/spec/<path>/_node.md
-//   - TEST                      → code-from-spec/spec/default.test.md
-//   - TEST/<path>               → code-from-spec/spec/<path>/default.test.md
-//   - TEST/<path>(<name>)       → code-from-spec/spec/<path>/<name>.test.md
-//   - EXTERNAL/<name>           → code-from-spec/external/<name>/_external.md
+//   - ROOT                      → code-from-spec/_node.md
+//   - ROOT/<path>               → code-from-spec/<path>/_node.md
+//   - ROOT/<path>(<qualifier>)  → code-from-spec/<path>/_node.md
+//   - TEST                      → code-from-spec/default.test.md
+//   - TEST/<path>               → code-from-spec/<path>/default.test.md
+//   - TEST/<path>(<name>)       → code-from-spec/<path>/<name>.test.md
 func PathFromLogicalName(logicalName string) (string, bool) {
 	if logicalName == "" {
 		return "", false
@@ -29,7 +28,7 @@ func PathFromLogicalName(logicalName string) (string, bool) {
 
 	// Handle ROOT namespace.
 	if logicalName == "ROOT" {
-		return "code-from-spec/spec/_node.md", true
+		return "code-from-spec/_node.md", true
 	}
 	if strings.HasPrefix(logicalName, "ROOT/") {
 		rest := logicalName[len("ROOT/"):]
@@ -43,13 +42,13 @@ func PathFromLogicalName(logicalName string) (string, bool) {
 		if rest == "" {
 			return "", false
 		}
-		result := "code-from-spec/spec/" + rest + "/_node.md"
+		result := "code-from-spec/" + rest + "/_node.md"
 		return filepath.ToSlash(result), true
 	}
 
 	// Handle TEST namespace.
 	if logicalName == "TEST" {
-		return "code-from-spec/spec/default.test.md", true
+		return "code-from-spec/default.test.md", true
 	}
 	if strings.HasPrefix(logicalName, "TEST/") {
 		rest := logicalName[len("TEST/"):]
@@ -59,24 +58,12 @@ func PathFromLogicalName(logicalName string) (string, bool) {
 
 		// Check for parenthesized name: TEST/<path>(<name>)
 		if path, name, hasName := parseQualifier(rest); hasName {
-			result := "code-from-spec/spec/" + path + "/" + name + ".test.md"
+			result := "code-from-spec/" + path + "/" + name + ".test.md"
 			return filepath.ToSlash(result), true
 		}
 
-		// Default test: TEST/<path> → code-from-spec/spec/<path>/default.test.md
-		result := "code-from-spec/spec/" + rest + "/default.test.md"
-		return filepath.ToSlash(result), true
-	}
-
-	// Handle EXTERNAL namespace.
-	if strings.HasPrefix(logicalName, "EXTERNAL/") {
-		name := logicalName[len("EXTERNAL/"):]
-		if name == "" {
-			return "", false
-		}
-		// EXTERNAL only supports a single name segment (no further nesting
-		// beyond what is given as <name>).
-		result := "code-from-spec/external/" + name + "/_external.md"
+		// Default test: TEST/<path> → code-from-spec/<path>/default.test.md
+		result := "code-from-spec/" + rest + "/default.test.md"
 		return filepath.ToSlash(result), true
 	}
 
@@ -92,8 +79,6 @@ func PathFromLogicalName(logicalName string) (string, bool) {
 //   - ROOT/<path>                      → (true,  true)  — always has a parent
 //   - ROOT/<path>(<qualifier>)         → (true,  true)  — qualifier does not affect result
 //   - TEST (any form)                  → (true,  true)  — parent is always in ROOT namespace
-//   - EXTERNAL/<name>                  → (false, true)  — externals have no parent
-//   - EXTERNAL (no name) or ""         → (false, false) — not a valid logical name
 //   - anything else                    → (false, false) — not a valid logical name
 func HasParent(logicalName string) (hasParent, ok bool) {
 	if logicalName == "" {
@@ -124,19 +109,7 @@ func HasParent(logicalName string) (hasParent, ok bool) {
 		return true, true
 	}
 
-	// EXTERNAL namespace — must have a name after the prefix; no parent.
-	if logicalName == "EXTERNAL" {
-		return false, false
-	}
-	if strings.HasPrefix(logicalName, "EXTERNAL/") {
-		name := logicalName[len("EXTERNAL/"):]
-		if name == "" {
-			return false, false
-		}
-		return false, true
-	}
-
-	// Unknown namespace.
+	// Unknown namespace — not a valid logical name.
 	return false, false
 }
 
@@ -192,7 +165,7 @@ func ParentLogicalName(logicalName string) (string, bool) {
 		return "ROOT/" + rest, true
 	}
 
-	// ROOT itself, EXTERNAL, or anything else — no parent.
+	// ROOT itself or anything else — no parent.
 	return "", false
 }
 
@@ -206,7 +179,6 @@ func ParentLogicalName(logicalName string) (string, bool) {
 //   - TEST/x(name)  → (true, true)
 //   - TEST/x        → (false, true)
 //   - TEST          → (false, true)
-//   - EXTERNAL/x    → (false, true)
 //   - ""            → (false, false)
 func HasQualifier(logicalName string) (hasQualifier, ok bool) {
 	if logicalName == "" {
@@ -239,19 +211,7 @@ func HasQualifier(logicalName string) (hasQualifier, ok bool) {
 		return hasQ, true
 	}
 
-	// EXTERNAL namespace — qualifiers not supported; EXTERNAL alone is invalid.
-	if logicalName == "EXTERNAL" {
-		return false, false
-	}
-	if strings.HasPrefix(logicalName, "EXTERNAL/") {
-		name := logicalName[len("EXTERNAL/"):]
-		if name == "" {
-			return false, false
-		}
-		return false, true
-	}
-
-	// Unknown namespace.
+	// Unknown namespace — not a valid logical name.
 	return false, false
 }
 
@@ -296,7 +256,7 @@ func QualifierName(logicalName string) (string, bool) {
 		return "", false
 	}
 
-	// ROOT (bare), TEST (bare), EXTERNAL, or unknown — no qualifier.
+	// ROOT (bare), TEST (bare), or unknown — no qualifier.
 	return "", false
 }
 
