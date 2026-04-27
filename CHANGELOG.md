@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/CodeFromSpec/tool-subagent-mcp/compare/v2.0.1...v2.1.0) (2026-04-27)
+
+
+### Features
+
+* skip empty public sections and consolidate dependency qualifiers ([#17](https://github.com/CodeFromSpec/tool-subagent-mcp/issues/17)) ([a697c35](https://github.com/CodeFromSpec/tool-subagent-mcp/commit/a697c35f5b1612b991c76534425ab23aee74ba7f))
+
 ## [2.0.1](https://github.com/CodeFromSpec/tool-subagent-mcp/compare/v2.0.0...v2.0.1) (2026-04-27)
 
 
