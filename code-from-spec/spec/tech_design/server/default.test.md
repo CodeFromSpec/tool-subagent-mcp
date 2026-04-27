@@ -1,6 +1,6 @@
 ---
-version: 27
-parent_version: 48
+version: 30
+parent_version: 51
 implements:
   - cmd/subagent-mcp/main_test.go
 ---

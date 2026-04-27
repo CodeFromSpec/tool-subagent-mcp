@@ -1,4 +1,5 @@
-// spec: TEST/tech_design/internal/tools/load_chain@v16
+// code-from-spec: TEST/tech_design/internal/tools/load_chain@v19
+// spec: TEST/tech_design/internal/tools/load_chain@v19
 package load_chain
 
 // This test file verifies the HandleLoadChain tool handler.
@@ -140,6 +141,21 @@ Some private content only.
 `
 }
 
+// testRootSpecEmptyPublic returns a ROOT spec with a # Public section that
+// has no content and no subsections (blank after trimming).
+func testRootSpecEmptyPublic() string {
+	return `---
+version: 1
+---
+
+# ROOT
+
+Some private content.
+
+# Public
+`
+}
+
 // testRootSpecWithPrivate returns a ROOT spec that has both # Public and
 // additional private sections, used to verify that only # Public is exposed.
 func testRootSpecWithPrivate() string {
@@ -208,6 +224,34 @@ Public leaf content.
 `, dependsOn, implLines)
 }
 
+// testLeafSpecWithMultipleDepends returns a leaf spec that depends on two
+// entries for the same node with different qualifiers.
+func testLeafSpecWithMultipleDepends(dep1, dep2 string, implements ...string) string {
+	implLines := ""
+	for _, p := range implements {
+		implLines += fmt.Sprintf("  - %s\n", p)
+	}
+	return fmt.Sprintf(`---
+version: 3
+parent_version: 1
+depends_on:
+  - path: %s
+    version: 1
+  - path: %s
+    version: 1
+implements:
+%s---
+
+# ROOT/a
+
+Leaf node content.
+
+# Public
+
+Public leaf content.
+`, dep1, dep2, implLines)
+}
+
 // testDepSpec returns a spec for ROOT/b with # Public containing two subsections.
 func testDepSpec() string {
 	return `---
@@ -229,6 +273,25 @@ Interface subsection content.
 ## Constraints
 
 Constraints subsection content.
+`
+}
+
+// testDepSpecEmptyInterfaceSubsection returns a spec for ROOT/b with # Public
+// containing an ## Interface subsection that has no body content.
+func testDepSpecEmptyInterfaceSubsection() string {
+	return `---
+version: 1
+---
+
+# ROOT/b
+
+Dependency node.
+
+# Public
+
+Public intro.
+
+## Interface
 `
 }
 
@@ -619,10 +682,10 @@ func TestHandleLoadChain_NonExistingCodeFilesOmitted(t *testing.T) {
 	}
 }
 
-// TestHandleLoadChain_AncestorWithNoPublicSection verifies that an ancestor
-// with no # Public section is still included in the chain, but with empty
-// content in its section.
-func TestHandleLoadChain_AncestorWithNoPublicSection(t *testing.T) {
+// TestHandleLoadChain_AncestorWithNoPublicSectionOmitted verifies that an
+// ancestor with no # Public section is omitted from the chain entirely.
+// Per v19 spec: "The chain content does not contain a file section for ROOT."
+func TestHandleLoadChain_AncestorWithNoPublicSectionOmitted(t *testing.T) {
 	dir := t.TempDir()
 	testChdir(t, dir)
 
@@ -635,14 +698,100 @@ func TestHandleLoadChain_AncestorWithNoPublicSection(t *testing.T) {
 
 	text := testResultText(t, result)
 
-	// ROOT section must still be present.
-	if !strings.Contains(text, "node: ROOT") {
-		t.Error("expected ROOT section even when it has no # Public section")
+	// ROOT section must NOT be present — ancestors with no # Public are omitted entirely.
+	if strings.Contains(text, "node: ROOT\n") {
+		t.Error("chain must not contain a file section for ROOT when it has no # Public section")
 	}
 
-	// The private content of ROOT must not leak into its section.
+	// The private content of ROOT must not appear at all.
 	if strings.Contains(text, "Some private content only") {
-		t.Error("private content must not appear in ROOT section when there is no # Public")
+		t.Error("private content must not appear in chain when ROOT has no # Public")
+	}
+}
+
+// TestHandleLoadChain_AncestorWithEmptyPublicSectionOmitted verifies that an
+// ancestor with a # Public section that has no content and no subsections
+// (blank after trimming) is omitted from the chain entirely.
+func TestHandleLoadChain_AncestorWithEmptyPublicSectionOmitted(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
+
+	// ROOT has an empty # Public section (no content, no subsections).
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "_node.md"), testRootSpecEmptyPublic())
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "_node.md"), testLeafSpec("src/a.go"))
+
+	result := testCallHandler(t, "ROOT/a")
+	testAssertSuccess(t, result)
+
+	text := testResultText(t, result)
+
+	// ROOT section must NOT be present — ancestors with empty # Public are omitted.
+	if strings.Contains(text, "node: ROOT\n") {
+		t.Error("chain must not contain a file section for ROOT when its # Public section is empty")
+	}
+}
+
+// TestHandleLoadChain_DependencyWithEmptyExtractedContentOmitted verifies that
+// when a dependency's extracted content (after applying the qualifier filter)
+// is empty (blank after trimming), the dependency is omitted from the chain.
+func TestHandleLoadChain_DependencyWithEmptyExtractedContentOmitted(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
+
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "_node.md"), testRootSpec())
+	// ROOT/a depends on ROOT/b(interface), but ROOT/b's ## Interface has no body.
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "_node.md"),
+		testLeafSpecWithDepends("ROOT/b(interface)", "src/a.go"))
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "b", "_node.md"),
+		testDepSpecEmptyInterfaceSubsection())
+
+	result := testCallHandler(t, "ROOT/a")
+	testAssertSuccess(t, result)
+
+	text := testResultText(t, result)
+
+	// ROOT/b section must NOT be present — the extracted ## Interface content is empty.
+	if strings.Contains(text, "node: ROOT/b\n") {
+		t.Error("chain must not contain a file section for ROOT/b when its extracted content is empty")
+	}
+}
+
+// TestHandleLoadChain_MultipleQualifiersConsolidated verifies that when a
+// node depends on the same dependency with multiple qualifiers, the chain
+// contains exactly one file section for that dependency, and that section
+// includes the content of all matched subsections in order.
+func TestHandleLoadChain_MultipleQualifiersConsolidated(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
+
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "_node.md"), testRootSpec())
+	// ROOT/a depends on ROOT/b(interface) and ROOT/b(constraints).
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "a", "_node.md"),
+		testLeafSpecWithMultipleDepends("ROOT/b(interface)", "ROOT/b(constraints)", "src/a.go"))
+	testWriteFile(t, filepath.Join(dir, "code-from-spec", "b", "_node.md"), testDepSpec())
+
+	result := testCallHandler(t, "ROOT/a")
+	testAssertSuccess(t, result)
+
+	text := testResultText(t, result)
+
+	// Both subsections must appear in the chain.
+	if !strings.Contains(text, "Interface subsection content") {
+		t.Error("expected ## Interface content in consolidated ROOT/b section")
+	}
+	if !strings.Contains(text, "Constraints subsection content") {
+		t.Error("expected ## Constraints content in consolidated ROOT/b section")
+	}
+
+	// There must be exactly one file section for ROOT/b (not two).
+	firstOccurrence := strings.Index(text, "node: ROOT/b\n")
+	if firstOccurrence < 0 {
+		t.Fatal("expected at least one ROOT/b section in chain")
+	}
+	// Look for a second occurrence of "node: ROOT/b" after the first.
+	secondOccurrence := strings.Index(text[firstOccurrence+1:], "node: ROOT/b\n")
+	if secondOccurrence >= 0 {
+		t.Error("ROOT/b must appear in exactly one file section, but found duplicate sections")
 	}
 }
 
