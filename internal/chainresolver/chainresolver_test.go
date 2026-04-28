@@ -1,4 +1,4 @@
-// code-from-spec: TEST/tech_design/internal/chain_resolver@v23
+// code-from-spec: TEST/tech_design/internal/chain_resolver@v24
 
 // Package chainresolver provides tests for the ResolveChain function.
 // Tests use t.TempDir() to create isolated spec trees, change the working
@@ -232,9 +232,11 @@ func TestResolveChain_DependencyWithQualifier(t *testing.T) {
 	}
 }
 
-// TestResolveChain_TestNodeIncludesSubjectDependencies verifies that when
-// resolving a TEST/ node, its subject's depends_on entries are merged in.
-func TestResolveChain_TestNodeIncludesSubjectDependencies(t *testing.T) {
+// TestResolveChain_TestNodeOnlyOwnDependencies verifies that when resolving
+// a TEST/ node, only the test node's own depends_on entries are used.
+// The subject's depends_on (ROOT/c) is NOT included; only the test node's
+// own dep (ROOT/d) appears in Dependencies.
+func TestResolveChain_TestNodeOnlyOwnDependencies(t *testing.T) {
 	dir := t.TempDir()
 	restore := testChdir(t, dir)
 	defer restore()
@@ -261,26 +263,16 @@ func TestResolveChain_TestNodeIncludesSubjectDependencies(t *testing.T) {
 
 	testAssertItem(t, "Target", chain.Target, "TEST/a", "code-from-spec/a/default.test.md", nil)
 
-	// Dependencies should include both ROOT/c (from subject) and ROOT/d (from test node)
-	if len(chain.Dependencies) != 2 {
-		t.Fatalf("Dependencies: got %d items, want 2", len(chain.Dependencies))
+	// Dependencies: only ROOT/d (test node's own dep); subject's dep ROOT/c is NOT included.
+	if len(chain.Dependencies) != 1 {
+		t.Fatalf("Dependencies: got %d items, want 1 (only test node's own dep)", len(chain.Dependencies))
 	}
-
-	// Find each by LogicalName for order-independent assertion
-	depMap := make(map[string]ChainItem)
-	for _, d := range chain.Dependencies {
-		depMap[d.LogicalName] = d
-	}
-	if _, ok := depMap["ROOT/c"]; !ok {
-		t.Errorf("Dependencies: missing ROOT/c")
-	}
-	if _, ok := depMap["ROOT/d"]; !ok {
-		t.Errorf("Dependencies: missing ROOT/d")
-	}
+	testAssertItem(t, "Dependencies[0]", chain.Dependencies[0], "ROOT/d", "code-from-spec/d/_node.md", nil)
 }
 
 // TestResolveChain_TestNodeNoOwnDependencies verifies that a TEST/ node with
-// no depends_on of its own still inherits the subject's dependencies.
+// no depends_on of its own results in empty Dependencies — the subject's
+// deps are NOT merged in.
 func TestResolveChain_TestNodeNoOwnDependencies(t *testing.T) {
 	dir := t.TempDir()
 	restore := testChdir(t, dir)
@@ -297,10 +289,10 @@ func TestResolveChain_TestNodeNoOwnDependencies(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(chain.Dependencies) != 1 {
-		t.Fatalf("Dependencies: got %d items, want 1", len(chain.Dependencies))
+	// The subject's dep ROOT/b is not included; test node has no own deps.
+	if len(chain.Dependencies) != 0 {
+		t.Errorf("Dependencies: got %d items, want 0 (subject deps not merged)", len(chain.Dependencies))
 	}
-	testAssertItem(t, "Dependencies[0]", chain.Dependencies[0], "ROOT/b", "code-from-spec/b/_node.md", nil)
 }
 
 // TestResolveChain_DependenciesSorted verifies that dependencies are sorted
@@ -428,19 +420,19 @@ func TestResolveChain_MultipleQualifiersSameFile(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestResolveChain_DedupSameFileSameQualifier verifies that two identical
-// (FilePath, Qualifier=nil) entries are deduplicated to one.
+// (FilePath, Qualifier=nil) entries in a node's own depends_on are
+// deduplicated to one.
 func TestResolveChain_DedupSameFileSameQualifier(t *testing.T) {
 	dir := t.TempDir()
 	restore := testChdir(t, dir)
 	defer restore()
 
-	// ROOT/a depends on ROOT/b; TEST/a also depends on ROOT/b
+	// ROOT/a has ROOT/b listed twice in depends_on (both nil qualifier)
 	testWriteFile(t, testNodeFile("ROOT"), testFrontmatter(1, nil, nil))
-	testWriteFile(t, testNodeFile("ROOT/a"), testFrontmatter(1, []string{"ROOT/b"}, nil))
+	testWriteFile(t, testNodeFile("ROOT/a"), testFrontmatter(1, []string{"ROOT/b", "ROOT/b"}, nil))
 	testWriteFile(t, testNodeFile("ROOT/b"), testFrontmatter(1, nil, nil))
-	testWriteFile(t, testNodeFile("TEST/a"), testFrontmatter(1, []string{"ROOT/b"}, nil))
 
-	chain, err := ResolveChain("TEST/a")
+	chain, err := ResolveChain("ROOT/a")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -464,13 +456,12 @@ func TestResolveChain_DedupDifferentQualifiers(t *testing.T) {
 	restore := testChdir(t, dir)
 	defer restore()
 
-	// ROOT/a depends on ROOT/b(interface); TEST/a depends on ROOT/b(constraints)
+	// ROOT/a depends on ROOT/b(interface) and ROOT/b(constraints)
 	testWriteFile(t, testNodeFile("ROOT"), testFrontmatter(1, nil, nil))
-	testWriteFile(t, testNodeFile("ROOT/a"), testFrontmatter(1, []string{"ROOT/b(interface)"}, nil))
+	testWriteFile(t, testNodeFile("ROOT/a"), testFrontmatter(1, []string{"ROOT/b(interface)", "ROOT/b(constraints)"}, nil))
 	testWriteFile(t, testNodeFile("ROOT/b"), testFrontmatter(1, nil, nil))
-	testWriteFile(t, testNodeFile("TEST/a"), testFrontmatter(1, []string{"ROOT/b(constraints)"}, nil))
 
-	chain, err := ResolveChain("TEST/a")
+	chain, err := ResolveChain("ROOT/a")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -495,24 +486,23 @@ func TestResolveChain_DedupDifferentQualifiers(t *testing.T) {
 
 // TestResolveChain_DedupNilSubsumesSpecific verifies that a nil qualifier
 // (whole # Public) subsumes a specific qualifier for the same file.
-// ROOT/a has nil, TEST/a has ROOT/b(interface) → result: nil wins.
+// ROOT/a depends_on ROOT/b (nil) and ROOT/b(interface) → result: one entry, nil.
 func TestResolveChain_DedupNilSubsumesSpecific(t *testing.T) {
 	dir := t.TempDir()
 	restore := testChdir(t, dir)
 	defer restore()
 
-	// ROOT/a depends on ROOT/b (nil qualifier); TEST/a depends on ROOT/b(interface)
+	// ROOT/a depends on ROOT/b (nil qualifier) and ROOT/b(interface)
 	testWriteFile(t, testNodeFile("ROOT"), testFrontmatter(1, nil, nil))
-	testWriteFile(t, testNodeFile("ROOT/a"), testFrontmatter(1, []string{"ROOT/b"}, nil))
+	testWriteFile(t, testNodeFile("ROOT/a"), testFrontmatter(1, []string{"ROOT/b", "ROOT/b(interface)"}, nil))
 	testWriteFile(t, testNodeFile("ROOT/b"), testFrontmatter(1, nil, nil))
-	testWriteFile(t, testNodeFile("TEST/a"), testFrontmatter(1, []string{"ROOT/b(interface)"}, nil))
 
-	chain, err := ResolveChain("TEST/a")
+	chain, err := ResolveChain("ROOT/a")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Only one entry: nil qualifier wins
+	// Only one entry: nil qualifier wins (subsumes the specific qualifier)
 	if len(chain.Dependencies) != 1 {
 		t.Fatalf("Dependencies: got %d items, want 1 (nil subsumes specific)", len(chain.Dependencies))
 	}
@@ -524,19 +514,18 @@ func TestResolveChain_DedupNilSubsumesSpecific(t *testing.T) {
 // TestResolveChain_DedupSpecificBeforeNilNilWins verifies that even when a
 // specific qualifier appears before the nil entry, the nil entry still
 // subsumes the specific qualifier.
-// ROOT/a has ROOT/b(interface) first; TEST/a adds ROOT/b (nil) → result: nil wins.
+// ROOT/a depends_on ROOT/b(interface) first, then ROOT/b (nil) → result: nil wins.
 func TestResolveChain_DedupSpecificBeforeNilNilWins(t *testing.T) {
 	dir := t.TempDir()
 	restore := testChdir(t, dir)
 	defer restore()
 
-	// ROOT/a depends on ROOT/b(interface); TEST/a depends on ROOT/b (nil)
+	// ROOT/a depends on ROOT/b(interface) first, then ROOT/b (nil qualifier)
 	testWriteFile(t, testNodeFile("ROOT"), testFrontmatter(1, nil, nil))
-	testWriteFile(t, testNodeFile("ROOT/a"), testFrontmatter(1, []string{"ROOT/b(interface)"}, nil))
+	testWriteFile(t, testNodeFile("ROOT/a"), testFrontmatter(1, []string{"ROOT/b(interface)", "ROOT/b"}, nil))
 	testWriteFile(t, testNodeFile("ROOT/b"), testFrontmatter(1, nil, nil))
-	testWriteFile(t, testNodeFile("TEST/a"), testFrontmatter(1, []string{"ROOT/b"}, nil))
 
-	chain, err := ResolveChain("TEST/a")
+	chain, err := ResolveChain("ROOT/a")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -557,13 +546,12 @@ func TestResolveChain_DedupRepeatedQualifier(t *testing.T) {
 	restore := testChdir(t, dir)
 	defer restore()
 
-	// ROOT/a depends on ROOT/b(interface); TEST/a also depends on ROOT/b(interface)
+	// ROOT/a depends on ROOT/b(interface) twice
 	testWriteFile(t, testNodeFile("ROOT"), testFrontmatter(1, nil, nil))
-	testWriteFile(t, testNodeFile("ROOT/a"), testFrontmatter(1, []string{"ROOT/b(interface)"}, nil))
+	testWriteFile(t, testNodeFile("ROOT/a"), testFrontmatter(1, []string{"ROOT/b(interface)", "ROOT/b(interface)"}, nil))
 	testWriteFile(t, testNodeFile("ROOT/b"), testFrontmatter(1, nil, nil))
-	testWriteFile(t, testNodeFile("TEST/a"), testFrontmatter(1, []string{"ROOT/b(interface)"}, nil))
 
-	chain, err := ResolveChain("TEST/a")
+	chain, err := ResolveChain("ROOT/a")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

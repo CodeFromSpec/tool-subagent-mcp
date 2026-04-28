@@ -1,4 +1,4 @@
-// code-from-spec: ROOT/tech_design/internal/chain_resolver@v72
+// code-from-spec: ROOT/tech_design/internal/chain_resolver@v73
 
 // Package chainresolver resolves the ordered list of files that form the
 // chain for a given target logical name. The chain is separated into:
@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/CodeFromSpec/tool-subagent-mcp/v2/internal/frontmatter"
 	"github.com/CodeFromSpec/tool-subagent-mcp/v2/internal/logicalnames"
@@ -98,9 +97,8 @@ func ResolveChain(targetLogicalName string) (*Chain, error) {
 	// -------------------------------------------------------------------
 	// Step 2 — Dependencies
 	//
-	// Read the target's frontmatter. If the target is a TEST/ node, also
-	// read the subject node's frontmatter. Collect all DependsOn entries
-	// from both and process them together.
+	// Read the target node's frontmatter. Collect all DependsOn entries
+	// and process them into ChainItems.
 	// -------------------------------------------------------------------
 	targetFilePath, ok := logicalnames.PathFromLogicalName(targetLogicalName)
 	if !ok {
@@ -112,30 +110,8 @@ func ResolveChain(targetLogicalName string) (*Chain, error) {
 		return nil, fmt.Errorf("error parsing frontmatter: %w", err)
 	}
 
-	// Accumulate all DependsOn entries to process.
-	allDeps := make([]frontmatter.DependsOn, 0, len(targetFM.DependsOn))
-	allDeps = append(allDeps, targetFM.DependsOn...)
-
-	// If the target is a TEST/ node, also include the subject (ROOT/) node's
-	// DependsOn entries.
-	if targetLogicalName == "TEST" || strings.HasPrefix(targetLogicalName, "TEST/") {
-		subjectName, ok := logicalnames.ParentLogicalName(targetLogicalName)
-		if !ok {
-			return nil, fmt.Errorf("cannot resolve logical name: %s", targetLogicalName)
-		}
-		subjectPath, ok := logicalnames.PathFromLogicalName(subjectName)
-		if !ok {
-			return nil, fmt.Errorf("cannot resolve logical name: %s", subjectName)
-		}
-		subjectFM, err := frontmatter.ParseFrontmatter(subjectPath)
-		if err != nil {
-			return nil, fmt.Errorf("error parsing frontmatter: %w", err)
-		}
-		allDeps = append(allDeps, subjectFM.DependsOn...)
-	}
-
 	// Process each DependsOn entry into a ChainItem.
-	for _, dep := range allDeps {
+	for _, dep := range targetFM.DependsOn {
 		// Step 2.1: Resolve the file path.
 		depFilePath, ok := logicalnames.PathFromLogicalName(dep.LogicalName)
 		if !ok {
