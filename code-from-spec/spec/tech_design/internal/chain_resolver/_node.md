@@ -1,5 +1,5 @@
 ---
-version: 72
+version: 73
 parent_version: 12
 depends_on:
   - path: EXTERNAL/codefromspec
@@ -73,9 +73,7 @@ remaining items form `Ancestors`.
 **Step 2 — Dependencies**
 
 Read the target node's frontmatter using `ParseFrontmatter`.
-If the target is a `TEST/` node, also read the subject
-node's frontmatter. Collect all `DependsOn` entries from both
-and process them together.
+Collect all `DependsOn` entries and process them.
 
 For each entry in `DependsOn`:
 1. Call `logicalnames.PathFromLogicalName` to get the file path.

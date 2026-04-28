@@ -1,4 +1,4 @@
-// code-from-spec: TEST/tech_design/server@v30
+// code-from-spec: TEST/tech_design/server@v31
 
 package main
 

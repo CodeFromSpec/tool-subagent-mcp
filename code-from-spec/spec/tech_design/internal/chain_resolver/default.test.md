@@ -1,6 +1,6 @@
 ---
-version: 23
-parent_version: 72
+version: 24
+parent_version: 73
 implements:
   - internal/chainresolver/chainresolver_test.go
 ---
@@ -63,18 +63,19 @@ Expect:
   `"ROOT/b(interface)"`, `FilePath` pointing to `ROOT/b`'s
   `_node.md`, `Qualifier` = pointer to `"interface"`
 
-### Test node — includes subject's dependencies
+### Test node — only own dependencies used
 
 Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
-`ROOT/c`), `ROOT/c`. Create test node `TEST/a` with its own
-depends_on `ROOT/d`, `ROOT/d`.
+`ROOT/c`), `ROOT/c`, `ROOT/d`. Create test node `TEST/a` with
+its own depends_on `ROOT/d`.
 
 Input: `"TEST/a"`
 
 Expect:
 - `Ancestors`: `ROOT`, `ROOT/a` (subject in ancestors)
 - `Target`: `TEST/a`
-- `Dependencies`: items from both `ROOT/c` and `ROOT/d`
+- `Dependencies`: only `ROOT/d` (test node's own dep;
+  subject's dep `ROOT/c` is not included)
 
 ### Test node — no own dependencies
 
@@ -87,7 +88,8 @@ Input: `"TEST/a"`
 Expect:
 - `Ancestors`: `ROOT`, `ROOT/a`
 - `Target`: `TEST/a`
-- `Dependencies`: one item `ROOT/b` (from subject)
+- `Dependencies`: empty (test node has no own deps; subject's
+  deps are not included)
 
 ### Dependencies sorted
 
@@ -137,10 +139,9 @@ Expect:
 ### Dedup: same file, same qualifier
 
 Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
-`ROOT/b`). Create test node `TEST/a` with depends_on
-`ROOT/b`.
+`ROOT/b`, `ROOT/b`), `ROOT/b`.
 
-Input: `"TEST/a"`
+Input: `"ROOT/a"`
 
 Expect:
 - `Dependencies`: one item `ROOT/b` with `Qualifier` = nil
@@ -149,10 +150,9 @@ Expect:
 ### Dedup: same file, different qualifiers — both kept
 
 Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
-`ROOT/b(interface)`). Create test node `TEST/a` with
-depends_on `ROOT/b(constraints)`.
+`ROOT/b(interface)`, `ROOT/b(constraints)`), `ROOT/b`.
 
-Input: `"TEST/a"`
+Input: `"ROOT/a"`
 
 Expect:
 - `Dependencies`: two items for `ROOT/b`, one with
@@ -161,10 +161,9 @@ Expect:
 ### Dedup: nil qualifier subsumes specific qualifiers
 
 Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
-`ROOT/b`). Create test node `TEST/a` with depends_on
-`ROOT/b(interface)`.
+`ROOT/b`, `ROOT/b(interface)`), `ROOT/b`.
 
-Input: `"TEST/a"`
+Input: `"ROOT/a"`
 
 Expect:
 - `Dependencies`: one item `ROOT/b` with `Qualifier` = nil.
@@ -174,10 +173,9 @@ Expect:
 ### Dedup: specific qualifier appears before nil — nil wins
 
 Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
-`ROOT/b(interface)`). Create test node `TEST/a` with
-depends_on `ROOT/b`.
+`ROOT/b(interface)`, `ROOT/b`), `ROOT/b`.
 
-Input: `"TEST/a"`
+Input: `"ROOT/a"`
 
 Expect:
 - `Dependencies`: one item `ROOT/b` with `Qualifier` = nil.
@@ -187,10 +185,9 @@ Expect:
 ### Dedup: repeated qualifier for same file
 
 Create a spec tree: `ROOT`, `ROOT/a` (leaf with depends_on
-`ROOT/b(interface)`). Create test node `TEST/a` with
-depends_on `ROOT/b(interface)`.
+`ROOT/b(interface)`, `ROOT/b(interface)`), `ROOT/b`.
 
-Input: `"TEST/a"`
+Input: `"ROOT/a"`
 
 Expect:
 - `Dependencies`: one item with `Qualifier` = `"interface"`
