@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.1](https://github.com/CodeFromSpec/tool-subagent-mcp/compare/v2.1.0...v2.1.1) (2026-04-28)
+
+
+### Bug Fixes
+
+* chain resolver no longer merges subject deps for TEST nodes ([#19](https://github.com/CodeFromSpec/tool-subagent-mcp/issues/19)) ([e0e02b1](https://github.com/CodeFromSpec/tool-subagent-mcp/commit/e0e02b182ec04c2151367200dbf19854e7d6f449))
+
 ## [2.1.0](https://github.com/CodeFromSpec/tool-subagent-mcp/compare/v2.0.1...v2.1.0) (2026-04-27)
 
 
