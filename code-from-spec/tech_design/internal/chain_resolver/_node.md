@@ -14,10 +14,10 @@ implements:
 
 # ROOT/tech_design/internal/chain_resolver
 
-## Intent
-
 Resolves the ordered list of files that form the chain for a
 given target logical name.
+
+# Public
 
 ## Context
 

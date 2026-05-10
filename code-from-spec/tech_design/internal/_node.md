@@ -5,10 +5,10 @@ parent_version: 15
 
 # ROOT/tech_design/internal
 
-## Intent
-
 Internal packages for the tool. Contains shared utilities and
 tool implementations.
+
+# Public
 
 ## Constraints
 

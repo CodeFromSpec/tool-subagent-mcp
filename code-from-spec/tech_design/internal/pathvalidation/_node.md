@@ -10,11 +10,11 @@ implements:
 
 # ROOT/tech_design/internal/pathvalidation
 
-## Intent
-
 Validates that a file path is safe to write to within a project
 directory. This is a security-critical package — it prevents
 writing files outside the intended project boundary.
+
+# Public
 
 ## Context
 

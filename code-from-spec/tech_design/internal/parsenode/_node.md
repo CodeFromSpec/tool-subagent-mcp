@@ -16,10 +16,10 @@ implements:
 
 # ROOT/tech_design/internal/parsenode
 
-## Intent
-
 Parses the body of a spec node file, returning a structured
 representation of all sections.
+
+# Public
 
 ## Context
 

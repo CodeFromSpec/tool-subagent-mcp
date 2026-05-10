@@ -5,9 +5,9 @@ parent_version: 9
 
 # ROOT/tech_design
 
-## Intent
-
 Technical design decisions for implementing the MCP server in Go.
+
+# Public
 
 ## Context
 
@@ -43,7 +43,7 @@ The working directory of the process is the project root.
 All relative paths — spec files, generated source files — are
 resolved against it.
 
-## Decisions
+# Decisions
 
 ### Subagent guidance via MCP protocol
 

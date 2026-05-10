@@ -5,10 +5,10 @@ parent_version: 12
 
 # ROOT/tech_design/internal/tools
 
-## Intent
-
 Technical context shared by all tool handlers: how to return
 results and errors.
+
+# Public
 
 ## Contracts
 

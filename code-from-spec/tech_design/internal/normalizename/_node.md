@@ -12,9 +12,9 @@ implements:
 
 # ROOT/tech_design/internal/normalizename
 
-## Intent
-
 Normalizes heading and logical name text for comparison.
+
+# Public
 
 ## Context
 

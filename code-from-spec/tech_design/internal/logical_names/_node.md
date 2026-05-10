@@ -10,9 +10,9 @@ implements:
 
 # ROOT/tech_design/internal/logical_names
 
-## Intent
-
 Centralizes conversion between logical names and file paths.
+
+# Public
 
 ## Context
 

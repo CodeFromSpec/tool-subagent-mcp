@@ -12,10 +12,10 @@ implements:
 
 # ROOT/tech_design/internal/frontmatter
 
-## Intent
-
 Reads and parses the YAML frontmatter from spec nodes, test nodes,
 and external dependency files.
+
+# Public
 
 ## Context
 

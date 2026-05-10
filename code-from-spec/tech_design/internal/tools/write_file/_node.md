@@ -16,12 +16,12 @@ implements:
 
 # ROOT/tech_design/internal/tools/write_file
 
-## Intent
-
 Implements the `write_file` tool handler: resolves the node's
 frontmatter from the provided logical name, validates the
 target path against the `implements` list and the project
 root, then writes the file to disk.
+
+# Public
 
 ## Context
 
@@ -120,7 +120,7 @@ func HandleWriteFile(
   `write_file`. It must not be bypassable.
 - Exactly one file is written per `write_file` call.
 
-## Decisions
+# Decisions
 
 ### write_file validates against implements
 

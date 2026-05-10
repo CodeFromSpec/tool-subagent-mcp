@@ -4,11 +4,11 @@ version: 9
 
 # ROOT
 
-## Intent
-
 Local MCP server for Code from Spec subagents. Exposes tools
 that subagents use to interact with the spec tree and generate
 code.
+
+# Public
 
 ## Context
 
@@ -70,7 +70,7 @@ target node and its dependencies are up to date before invoking
 a subagent. Operating on a stale spec may produce incorrect
 results — enforcing this is the orchestrator's responsibility.
 
-## Decisions
+# Decisions
 
 ### Confinement is the caller's responsibility
 

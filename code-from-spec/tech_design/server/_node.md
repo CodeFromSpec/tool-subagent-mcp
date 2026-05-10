@@ -18,10 +18,10 @@ implements:
 
 # ROOT/tech_design/server
 
-## Intent
-
 Entry point: handles argument validation, creates and configures
 the MCP server, registers tools, and runs the server.
+
+# Public
 
 ## Context
 

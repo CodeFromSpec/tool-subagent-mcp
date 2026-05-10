@@ -24,11 +24,11 @@ implements:
 
 # ROOT/tech_design/internal/tools/load_chain
 
-## Intent
-
 Implements the `load_chain` tool handler: validates the
 logical name, loads the spec chain, and returns the chain
 content as a single MCP text response.
+
+# Public
 
 ## Context
 
@@ -208,7 +208,7 @@ confusing the subagent.
 - If any chain file cannot be read, `load_chain` returns an error
   identifying the missing file; it does not return partial results.
 
-## Decisions
+# Decisions
 
 ### load_chain returns everything in one call
 

@@ -18,11 +18,11 @@ implements:
 
 # ROOT/tech_design/internal/tools/patch_file
 
-## Intent
-
 Implements the `patch_file` tool handler: applies a unified diff
 to an existing file, after validating the target path against the
 node's `implements` list and the project root.
+
+# Public
 
 ## Context
 

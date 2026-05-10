@@ -5,9 +5,9 @@ parent_version: 15
 
 # ROOT/tech_design/go_module
 
-## Intent
-
 Documents the Go module configuration and how it is managed.
+
+# Public
 
 ## Context
 
