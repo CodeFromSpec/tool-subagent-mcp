@@ -1,6 +1,6 @@
 ---
-version: 10
-subject_version: 11
+version: 11
+subject_version: 12
 implements:
   - internal/pathvalidation/pathvalidation_test.go
 ---

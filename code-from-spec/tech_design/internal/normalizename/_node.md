@@ -1,11 +1,11 @@
 ---
-version: 2
+version: 3
 parent_version: 12
 depends_on:
   - path: ROOT/external/codefromspec
-    version: 3
+    version: 4
   - path: ROOT/external/golang-x-text
-    version: 1
+    version: 2
 implements:
   - internal/normalizename/normalizename.go
 ---

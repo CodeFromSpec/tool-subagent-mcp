@@ -1,9 +1,9 @@
 ---
-version: 11
+version: 12
 parent_version: 12
 depends_on:
   - path: ROOT/external/owasp-path-traversal
-    version: 1
+    version: 2
 implements:
   - internal/pathvalidation/pathvalidation.go
 ---

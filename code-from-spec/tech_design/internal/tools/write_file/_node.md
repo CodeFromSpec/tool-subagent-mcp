@@ -1,15 +1,15 @@
 ---
-version: 36
+version: 38
 parent_version: 5
 depends_on:
   - path: ROOT/external/mcp-go-sdk
-    version: 2
+    version: 3
   - path: ROOT/tech_design/internal/frontmatter
-    version: 32
+    version: 33
   - path: ROOT/tech_design/internal/logical_names
-    version: 29
+    version: 30
   - path: ROOT/tech_design/internal/pathvalidation
-    version: 11
+    version: 12
 implements:
   - internal/write_file/write_file.go
 ---
