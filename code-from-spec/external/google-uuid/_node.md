@@ -1,4 +1,13 @@
-# google/uuid — API used
+---
+version: 3
+parent_version: 1
+---
+
+# ROOT/external/google-uuid
+
+UUID generation library for Go: `github.com/google/uuid`.
+
+# Public
 
 ## Import
 

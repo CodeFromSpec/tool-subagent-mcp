@@ -1,4 +1,16 @@
-# Path Traversal — OWASP Guidance
+---
+version: 2
+parent_version: 1
+---
+
+# ROOT/external/owasp-path-traversal
+
+OWASP guidance on path traversal attacks: attack vectors,
+common bypass techniques, and prevention recommendations.
+
+Source: https://owasp.org/www-community/attacks/Path_Traversal
+
+# Public
 
 ## What is path traversal
 

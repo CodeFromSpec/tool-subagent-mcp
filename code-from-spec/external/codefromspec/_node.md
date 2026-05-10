@@ -1,16 +1,14 @@
-# Code From Spec
-
-**Code From Spec** is a methodology where code is a generated
-artifact, not the source of truth. The source of truth is a hierarchy
-of specification files. To change behavior, you change the spec and
-regenerate. You never edit generated code directly.
-
-This methodology is designed for AI agent participation at every
-stage — writing specs, managing versions, detecting and resolving
-staleness, generating code, and assisting non-technical contributors
-with spec authoring.
-
 ---
+version: 4
+parent_version: 1
+---
+
+# ROOT/external/codefromspec
+
+The Code from Spec framework documentation. Defines the methodology,
+spec structure, versioning rules, and code generation chain.
+
+# Public
 
 ## The Model
 
@@ -25,8 +23,6 @@ root/
         ├── calculation/   ← leaf, implemented
         └── rounding/      ← leaf, implemented
 ```
-
----
 
 ## File Format
 
@@ -84,8 +80,6 @@ example, all of the following are equivalent:
 - `ROOT/x/y(Testes de aceitação)` (logical name)
 - `ROOT/x/y(Testes    de  aceitação  )` (logical name)
 - `ROOT/x/y(testes de ACEITAÇÃO)` (logical name)
-
----
 
 ## Specifications
 
@@ -277,8 +271,6 @@ Useful private subsections include:
 Nothing in a test node is available to other nodes. Content is
 free-form.
 
----
-
 ## Versioning and Staleness
 
 Every versioned file has a `version` field in its YAML frontmatter.
@@ -361,8 +353,6 @@ Both must be clean before generating code (see Code Generation) —
 generating from stale specs is wasteful, as the output will be
 stale before it is written.
 
----
-
 ## Code Generation
 
 An **orchestrator** dispatches a code generation subagent for each
@@ -427,8 +417,6 @@ as the language allows. The comment syntax does not matter — `//`,
 `#`, `/* */`, `--`, or any other form is fine. What matters is that
 `code-from-spec: <name>@v<version>` appears in the file.
 
----
-
 ## Path Separator
 
 All paths in the framework use forward slash (`/`) as the
@@ -438,14 +426,12 @@ Backslash (`\`) is never used as a separator. Tools that interact
 with the OS filesystem must normalize paths to forward slashes
 before returning or comparing them.
 
----
-
 ## Resources
 
 External resources required to operate this framework:
 
 | Resource | URL |
 |---|---|
-| Code generation with subagents | https://raw.githubusercontent.com/CodeFromSpec/framework/main/rules/CODE_GENERATION.md |
-| `staleness-check` tool | https://github.com/CodeFromSpec/tool-staleness-check/releases/latest |
-| `subagent-mcp` tool | https://github.com/CodeFromSpec/tool-subagent-mcp/releases/latest |
+| Code generation with subagents | https://raw.githubusercontent.com/CodeFromSpec/framework/v2/rules/CODE_GENERATION.md |
+| `staleness-check` tool | https://github.com/CodeFromSpec/tool-staleness-check/releases/tag/v2.0.0 |
+| `subagent-mcp` tool | https://github.com/CodeFromSpec/tool-subagent-mcp/releases/tag/v2.1.1 |

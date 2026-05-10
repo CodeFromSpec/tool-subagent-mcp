@@ -1,4 +1,14 @@
-# modelcontextprotocol/go-sdk — API used
+---
+version: 3
+parent_version: 1
+---
+
+# ROOT/external/mcp-go-sdk
+
+Official Go SDK for the Model Context Protocol:
+`github.com/modelcontextprotocol/go-sdk`.
+
+# Public
 
 ## Import
 

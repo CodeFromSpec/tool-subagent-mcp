@@ -1,4 +1,17 @@
-# yuin/goldmark — API used
+---
+version: 4
+parent_version: 1
+---
+
+# ROOT/external/yuin-goldmark
+
+CommonMark Markdown parser for Go: `github.com/yuin/goldmark`.
+
+MIT licensed. Produces an AST from Markdown source, enabling
+structured traversal of headings, paragraphs, code blocks, and
+other elements without implementing parsing logic.
+
+# Public
 
 ## Import
 

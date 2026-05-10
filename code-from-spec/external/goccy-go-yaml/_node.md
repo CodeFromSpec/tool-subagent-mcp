@@ -1,4 +1,15 @@
-# goccy/go-yaml — API used
+---
+version: 2
+parent_version: 1
+---
+
+# ROOT/external/goccy-go-yaml
+
+YAML parsing library for Go: `github.com/goccy/go-yaml`.
+
+Drop-in replacement for the archived `gopkg.in/yaml.v3`.
+
+# Public
 
 ## Import
 

@@ -1,4 +1,17 @@
-# golang.org/x/text — API used
+---
+version: 2
+parent_version: 1
+---
+
+# ROOT/external/golang-x-text
+
+Unicode text processing packages for Go:
+`golang.org/x/text`.
+
+Part of the official Go project extended libraries.
+MIT licensed.
+
+# Public
 
 ## Import
 
