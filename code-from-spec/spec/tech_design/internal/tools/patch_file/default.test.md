@@ -1,6 +1,6 @@
 ---
 version: 7
-parent_version: 5
+subject_version: 5
 implements:
   - internal/patch_file/patch_file_test.go
 ---

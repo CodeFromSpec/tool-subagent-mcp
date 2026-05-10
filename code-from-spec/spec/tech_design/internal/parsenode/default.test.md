@@ -1,6 +1,6 @@
 ---
 version: 7
-parent_version: 32
+subject_version: 32
 implements:
   - internal/parsenode/parsenode_test.go
 ---

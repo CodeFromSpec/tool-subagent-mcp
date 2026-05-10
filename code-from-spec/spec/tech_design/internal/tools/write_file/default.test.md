@@ -1,6 +1,6 @@
 ---
 version: 8
-parent_version: 36
+subject_version: 36
 implements:
   - internal/write_file/write_file_test.go
 ---
