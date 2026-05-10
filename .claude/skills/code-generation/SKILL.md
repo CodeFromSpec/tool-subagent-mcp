@@ -57,6 +57,11 @@ or when `code_staleness` has items.
    > 5. If the spec has gaps or contradictions that prevent generation,
    >    do not guess — report the problem clearly instead of writing a
    >    file.
+   > 6. After generating, list any assumptions you made where the spec
+   >    was silent or ambiguous. Label this section `## Assumptions`.
+   >    Include: format choices, column/field mappings you inferred,
+   >    interpretations of ambiguous wording. If there are none, omit
+   >    the section.
    >
    > Do not read any file not provided by `load_chain`. Do not call any
    > tool other than `load_chain` and `write_file`.
@@ -71,7 +76,14 @@ or when `code_staleness` has items.
   multiple Agent tool calls).
 - Never edit generated files manually — always regenerate via a
   subagent.
-- If a subagent reports a spec gap, surface it to the user. Do not
-  attempt to fill the gap by reading the codebase yourself.
+- After each subagent completes, check its output for an
+  `## Assumptions` section or any language indicating the spec was
+  ambiguous, silent, or required interpretation (e.g., "the spec
+  does not specify", "chose", "assumed", "not defined"). Collect
+  all such items and present them to the user **before** reporting
+  success. These are potential spec gaps that need confirmation.
+- If a subagent reports a spec gap that prevented generation,
+  surface it to the user. Do not attempt to fill the gap by reading
+  the codebase yourself.
 - After generation, do not automatically run build or tests unless the
   user asks — report what was generated and let the user decide.
