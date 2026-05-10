@@ -60,7 +60,7 @@ entry after normalization.
 
 ### Invalid logical name prefix
 
-Call the handler with `LogicalName: "EXTERNAL/something"`.
+Call the handler with `LogicalName: "ROOT/external/something"`.
 
 Expect: tool error.
 

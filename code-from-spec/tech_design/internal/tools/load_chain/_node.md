@@ -3,9 +3,9 @@ version: 60
 parent_version: 5
 depends_on:
   - path: ROOT/external/google-uuid
-    version: 2
+    version: 3
   - path: ROOT/external/mcp-go-sdk
-    version: 2
+    version: 3
   - path: ROOT/tech_design/internal/chain_resolver
     version: 73
   - path: ROOT/tech_design/internal/frontmatter

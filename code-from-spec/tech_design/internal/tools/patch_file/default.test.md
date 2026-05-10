@@ -112,7 +112,7 @@ Expect: success result with text `"patched output/file.go"`.
 
 ### Invalid logical name prefix
 
-Call the handler with `LogicalName: "EXTERNAL/something"`.
+Call the handler with `LogicalName: "ROOT/external/something"`.
 
 Expect: tool error.
 
