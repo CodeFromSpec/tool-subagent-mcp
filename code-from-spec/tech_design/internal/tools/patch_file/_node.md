@@ -2,9 +2,9 @@
 version: 5
 parent_version: 5
 depends_on:
-  - path: EXTERNAL/bluekeyes-go-gitdiff
+  - path: ROOT/external/bluekeyes-go-gitdiff
     version: 1
-  - path: EXTERNAL/mcp-go-sdk
+  - path: ROOT/external/mcp-go-sdk
     version: 2
   - path: ROOT/tech_design/internal/frontmatter
     version: 32

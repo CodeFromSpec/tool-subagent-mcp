@@ -2,7 +2,7 @@
 version: 36
 parent_version: 5
 depends_on:
-  - path: EXTERNAL/mcp-go-sdk
+  - path: ROOT/external/mcp-go-sdk
     version: 2
   - path: ROOT/tech_design/internal/frontmatter
     version: 32
