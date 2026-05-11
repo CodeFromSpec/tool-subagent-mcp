@@ -58,13 +58,24 @@ giving you a name (e.g., `ROOT/tech_design/server`).
 5. If you found issues in step 4, report your findings and stop.
    Otherwise, proceed to step 6.
 
-6. Generate each source file. Use the target file as the primary
-   specification and the rest of the context for constraints,
-   conventions, and reference material.
+6. For each file listed in `implements`, check whether the chain
+   includes an existing version of the file (in the Code section).
+   If it does, compare the existing code against the spec and
+   determine what needs to change.
 
-7. For each file listed in `implements`, write the result with
-   `write_file` to create or overwrite it. Pass the same name the
-   orchestrator gave you as `logical_name`.
+7. Write the result. Pass the same name the orchestrator gave you
+   as `logical_name`.
+
+   - **File does not exist yet** — use `write_file` to create it
+     from scratch.
+   - **File exists and needs extensive changes** — use `write_file`
+     to overwrite it entirely.
+   - **File exists and only a small part needs to change** (e.g.,
+     spec comment version, a single condition, a few lines) — use
+     `find_replace` for each surgical edit. Copy the `old_string`
+     exactly from the existing file content in the chain — do not
+     type it from memory. If a `find_replace` fails, fall back to
+     `write_file`.
 
 ## Rules
 
