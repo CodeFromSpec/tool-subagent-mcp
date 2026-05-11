@@ -13,8 +13,8 @@ files.
   files included
 - **write_file** — writes a generated file to disk, validated
   against the node's `implements` list
-- **patch_file** — applies a unified diff to an existing file,
-  validated against the node's `implements` list
+- **find_replace** — replaces a specific string in an existing
+  file, validated against the node's `implements` list
 
 ## Install
 
@@ -59,7 +59,7 @@ subagents.
 Tools:
   load_chain     Load the spec chain for a node.
   write_file     Write a generated file to disk.
-  patch_file     Apply a unified diff to an existing file.
+  find_replace   Replace a specific string in an existing file.
 
 The subagent should have no other tools available — no file
 read, write, or search capabilities beyond what this server

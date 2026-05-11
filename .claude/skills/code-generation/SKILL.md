@@ -47,13 +47,20 @@ or when `code_staleness` has items.
    > 2. Read the chain carefully. Identify the target node's spec
    >    (its intent, contracts, and interface), the constraints from
    >    ancestor nodes, and any dependency specs.
-   > 3. For each file declared in the node's `implements` list, generate
-   >    the complete file content. The first line where a comment is
-   >    allowed must be the spec comment:
+   > 3. For each file declared in the node's `implements` list, check
+   >    whether the chain includes an existing version of the file.
+   >    Compare it against the spec and determine what needs to change.
+   > 4. Write the result:
+   >    - **File does not exist** — use `write_file` to create it.
+   >    - **File exists and only the spec comment version changed** —
+   >      use `find_replace` to update the `code-from-spec:` comment.
+   >      Copy the `old_string` exactly from the existing file content
+   >      in the chain.
+   >    - **File exists and code needs to change** — use `write_file`
+   >      to overwrite it entirely.
+   >    Every generated file must contain the spec comment:
    >    `// code-from-spec: <logical-name>@v<version>`
    >    where `<version>` is the node's current `version` field.
-   > 4. Call `write_file` once per file, passing the logical name, the
-   >    relative file path, and the complete content.
    > 5. If the spec has gaps or contradictions that prevent generation,
    >    do not guess — report the problem clearly instead of writing a
    >    file.
@@ -64,7 +71,7 @@ or when `code_staleness` has items.
    >    the section.
    >
    > Do not read any file not provided by `load_chain`. Do not call any
-   > tool other than `load_chain` and `write_file`.
+   > tool other than `load_chain`, `write_file`, and `find_replace`.
 
 5. After all subagents complete, run the staleness-check tool again.
    Report the remaining `code_staleness` items (if any) to the user.

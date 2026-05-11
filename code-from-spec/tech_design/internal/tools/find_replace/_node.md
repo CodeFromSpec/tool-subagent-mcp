@@ -1,9 +1,7 @@
 ---
-version: 9
-parent_version: 7
+version: 2
+parent_version: 8
 depends_on:
-  - path: ROOT/external/bluekeyes-go-gitdiff
-    version: 3
   - path: ROOT/external/mcp-go-sdk
     version: 4
   - path: ROOT/tech_design/internal/frontmatter
@@ -13,32 +11,35 @@ depends_on:
   - path: ROOT/tech_design/internal/pathvalidation
     version: 14
 implements:
-  - internal/patch_file/patch_file.go
+  - internal/find_replace/find_replace.go
 ---
 
-# ROOT/tech_design/internal/tools/patch_file
+# ROOT/tech_design/internal/tools/find_replace
 
-Implements the `patch_file` tool handler: applies a unified diff
-to an existing file, after validating the target path against the
-node's `implements` list and the project root.
+Implements the `find_replace` tool handler: finds a unique
+string in an existing file and replaces it, after validating
+the target path against the node's `implements` list and the
+project root.
 
 # Public
 
 ## Package
 
-`package patch_file`
+`package find_replace`
 
-## Dependencies
+## Target node
 
-- `github.com/bluekeyes/go-gitdiff/gitdiff` — parsing and
-  applying unified diffs.
+The target node is identified by its logical name — either a leaf
+spec node (`ROOT/...`) or a test node (`TEST/...`). Examples:
+`ROOT/payments/fees/calculation`,
+`TEST/payments/fees/calculation`.
 
 ## Interface
 
 ### Tool definition
 
-Name: `patch_file`
-Description: `"Apply a unified diff to an existing source file. The path must be one of the files declared in the node's implements list. The file must already exist."`
+Name: `find_replace`
+Description: `"Replace a specific string in an existing source file. The old_string must appear exactly once. The path must be one of the files declared in the node's implements list. The file must already exist."`
 
 Input parameters:
 
@@ -46,25 +47,27 @@ Input parameters:
 |---|---|---|---|
 | `logical_name` | string | yes | Logical name of the node whose implements list authorizes the write. |
 | `path` | string | yes | Relative file path from project root. |
-| `diff` | string | yes | Unified diff to apply to the file. |
+| `old_string` | string | yes | Exact string to find in the file. Must match exactly once. |
+| `new_string` | string | yes | Replacement string. |
 
-### PatchFileArgs type
+### FindReplaceArgs type
 
 ```go
-type PatchFileArgs struct {
+type FindReplaceArgs struct {
     LogicalName string `json:"logical_name" jsonschema:"Logical name of the node whose implements list authorizes the write."`
     Path        string `json:"path" jsonschema:"Relative file path from project root."`
-    Diff        string `json:"diff" jsonschema:"Unified diff to apply to the file."`
+    OldString   string `json:"old_string" jsonschema:"Exact string to find in the file. Must match exactly once."`
+    NewString   string `json:"new_string" jsonschema:"Replacement string."`
 }
 ```
 
 ### Handler
 
 ```go
-func HandlePatchFile(
+func HandleFindReplace(
     ctx context.Context,
     req *mcp.CallToolRequest,
-    args PatchFileArgs,
+    args FindReplaceArgs,
 ) (*mcp.CallToolResult, any, error)
 ```
 
@@ -93,26 +96,15 @@ func HandlePatchFile(
 8. Read the existing file at the target path. If the file does
    not exist, return a tool error:
    `"file does not exist: <path>"`.
-9. Parse the unified diff from `args.Diff` using
-   `gitdiff.Parse`. If parsing fails (e.g. the diff is
-   semantically invalid), return a tool error:
-   `"failed to parse diff: <err>"`. Note: completely
-   malformed input that `gitdiff.Parse` cannot interpret
-   as a diff will result in zero file entries (no error),
-   which is caught by step 10.
-10. The parse result must contain exactly one file entry.
-    If it contains zero or more than one, return a tool error:
-    `"diff must contain exactly one file"`. This also covers
-    diffs that are so malformed that `gitdiff.Parse` produces
-    no file entries.
-11. Apply the patch to the file content using `gitdiff.Apply`.
-    If application fails, return a tool error:
-    `"failed to apply diff to <path>: <err>"`. Note: context
-    mismatches between the diff and the file may be caught
-    by `gitdiff.Parse` (step 9) rather than `gitdiff.Apply`.
-12. Write the patched content back to the file, overwriting
-    the original.
-13. Return a success result with text `"patched <path>"`.
+9. Count occurrences of `args.OldString` in the file content
+   using `strings.Count`. If count is 0, return a tool error:
+   `"old_string not found in <path>"`. If count is greater
+   than 1, return a tool error:
+   `"old_string matches multiple locations in <path>"`.
+10. Replace the single occurrence using
+    `strings.Replace(content, args.OldString, args.NewString, 1)`.
+11. Write the result back to the file, overwriting the original.
+12. Return a success result with text `"edited <path>"`.
 
 ### Error handling
 
@@ -125,14 +117,10 @@ func HandlePatchFile(
   <path>. allowed paths: <list>"`.
 - File does not exist → tool error:
   `"file does not exist: <path>"`.
-- Diff parse failure (semantic error from `gitdiff.Parse`) →
-  tool error: `"failed to parse diff: <err>"`.
-- Diff has wrong number of files (including malformed input
-  that produces zero entries) → tool error:
-  `"diff must contain exactly one file"`.
-- Apply failure → tool error:
-  `"failed to apply diff to <path>: <err>"`. Context
-  mismatches may surface as parse errors (step 9) instead.
+- old_string not found → tool error:
+  `"old_string not found in <path>"`.
+- old_string matches multiple locations → tool error:
+  `"old_string matches multiple locations in <path>"`.
 - Write failure → tool error:
   `"failed to write <path>: <err>"`.
 
@@ -144,7 +132,8 @@ func HandlePatchFile(
 - Writes are limited to `implements`.
 - The validation against `implements` is the security boundary.
   It must not be bypassable.
-- The file must already exist. `patch_file` does not create new
+- The file must already exist. `find_replace` does not create new
   files — use `write_file` for that.
-- Exactly one file is patched per `patch_file` call.
-- The diff must target exactly one file.
+- `old_string` must match exactly once. Zero or multiple matches
+  are rejected.
+- Exactly one file is edited per `find_replace` call.

@@ -1,6 +1,6 @@
 ---
-version: 35
-subject_version: 58
+version: 37
+subject_version: 60
 implements:
   - cmd/subagent-mcp/main_test.go
 ---
@@ -70,4 +70,4 @@ request followed by a `tools/list` request over stdin (JSON-RPC).
 Parse the JSON-RPC response from stdout.
 
 Expect: the response contains tools named `load_chain`,
-`write_file`, and `patch_file`.
+`write_file`, and `find_replace`.

@@ -1,4 +1,4 @@
-// code-from-spec: ROOT/tech_design/internal/tools/write_file@v40
+// code-from-spec: ROOT/tech_design/internal/tools/write_file@v41
 
 // Package write_file implements the write_file MCP tool handler.
 //
