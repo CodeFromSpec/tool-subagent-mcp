@@ -63,8 +63,12 @@ or when `code_staleness` has items.
    >    interpretations of ambiguous wording. If there are none, omit
    >    the section.
    >
+   > You also have `find_replace` available — use it for surgical edits
+   > when only a small part of the file changes (e.g., updating the spec
+   > comment version). The old_string must match exactly once.
+   >
    > Do not read any file not provided by `load_chain`. Do not call any
-   > tool other than `load_chain` and `write_file`.
+   > tool other than `load_chain`, `write_file`, and `find_replace`.
 
 5. After all subagents complete, run the staleness-check tool again.
    Report the remaining `code_staleness` items (if any) to the user.
