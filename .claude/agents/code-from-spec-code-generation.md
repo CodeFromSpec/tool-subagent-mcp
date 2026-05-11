@@ -85,9 +85,14 @@ A human may need to review your output against the specification.
 Everything below serves that goal — spend extra tokens and time
 if it makes the result easier for a human to verify.
 
-- **Comment abundantly.** Explain intent, clarify non-obvious
-  decisions, and document constraints that influenced the
-  implementation.
+- **Comment abundantly** when creating new files. Explain intent,
+  clarify non-obvious decisions, and document constraints that
+  influenced the implementation.
+- **Do not rewrite existing comments.** When updating an existing
+  file, preserve comments as-is unless they are factually wrong
+  (e.g., describe behavior that contradicts the spec). Rewording
+  comments for style creates noise in the diff and makes human
+  review harder.
 - **Write straightforward code.** Simple and readable over clever
   and compact.
 
