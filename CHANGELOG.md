@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.0](https://github.com/CodeFromSpec/tool-subagent-mcp/compare/v2.1.1...v2.2.0) (2026-05-11)
+
+
+### Features
+
+* migrate to Code from Spec v2 ([#21](https://github.com/CodeFromSpec/tool-subagent-mcp/issues/21)) ([7467a4a](https://github.com/CodeFromSpec/tool-subagent-mcp/commit/7467a4a62356b9d191d62a0cb150fe44a6657f44))
+* Replace patch_file with find_replace tool ([#23](https://github.com/CodeFromSpec/tool-subagent-mcp/issues/23)) ([4f54c60](https://github.com/CodeFromSpec/tool-subagent-mcp/commit/4f54c6085966545b408db427aed2f1b613a3a1f1))
+
 ## [2.1.1](https://github.com/CodeFromSpec/tool-subagent-mcp/compare/v2.1.0...v2.1.1) (2026-04-28)
 
 
