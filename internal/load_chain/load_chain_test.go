@@ -1,4 +1,4 @@
-// code-from-spec: TEST/tech_design/internal/tools/load_chain@v23
+// code-from-spec: TEST/tech_design/internal/tools/load_chain@v24
 package load_chain
 
 // This test file verifies the HandleLoadChain tool handler.

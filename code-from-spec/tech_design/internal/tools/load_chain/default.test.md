@@ -1,6 +1,6 @@
 ---
-version: 23
-subject_version: 66
+version: 24
+subject_version: 67
 implements:
   - internal/load_chain/load_chain_test.go
 ---

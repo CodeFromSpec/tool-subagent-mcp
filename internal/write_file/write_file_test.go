@@ -1,4 +1,4 @@
-// code-from-spec: TEST/tech_design/internal/tools/write_file@v11
+// code-from-spec: TEST/tech_design/internal/tools/write_file@v12
 package write_file
 
 import (
@@ -218,6 +218,8 @@ func TestBackslashPathNormalized(t *testing.T) {
 func TestInvalidLogicalNamePrefix(t *testing.T) {
 	tmpDir := t.TempDir()
 
+	// "EXTERNAL/something" does not start with ROOT/ or TEST/, so it must
+	// be rejected before any spec file lookup.
 	result := testCallHandler(t, tmpDir, WriteFileArgs{
 		LogicalName: "EXTERNAL/something",
 		Path:        "some/file.go",

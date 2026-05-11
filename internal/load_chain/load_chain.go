@@ -1,4 +1,4 @@
-// code-from-spec: ROOT/tech_design/internal/tools/load_chain@v66
+// code-from-spec: ROOT/tech_design/internal/tools/load_chain@v67
 package load_chain
 
 import (
@@ -128,7 +128,7 @@ func HandleLoadChain(
 	// Group dependency items by FilePath, preserving first-occurrence order.
 	// This ensures each dependency file is emitted as a single, consolidated
 	// section even when referenced multiple times with different qualifiers.
-	depOrder := make([]string, 0)           // file paths in first-occurrence order
+	depOrder := make([]string, 0)                           // file paths in first-occurrence order
 	depGroups := make(map[string][]chainresolver.ChainItem) // FilePath → items
 
 	for _, item := range chain.Dependencies {
@@ -196,7 +196,8 @@ func HandleLoadChain(
 
 	// --- Code files ---
 	// Include existing source files (the previously generated implementation
-	// files) as-is. These sections use only a path: header, no node: header.
+	// files) as-is. These sections use only a path: header, no node: header,
+	// since they are generated source files rather than spec files.
 	for _, fp := range chain.Code {
 		codeContent, readErr := os.ReadFile(fp)
 		if readErr != nil {

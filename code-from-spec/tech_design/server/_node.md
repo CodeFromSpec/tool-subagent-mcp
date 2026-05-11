@@ -1,17 +1,17 @@
 ---
-version: 58
+version: 60
 parent_version: 17
 depends_on:
   - path: ROOT/external/mcp-go-sdk
     version: 4
   - path: ROOT/tech_design/internal/tools
-    version: 7
+    version: 8
+  - path: ROOT/tech_design/internal/tools/find_replace
+    version: 2
   - path: ROOT/tech_design/internal/tools/load_chain
-    version: 66
-  - path: ROOT/tech_design/internal/tools/patch_file
-    version: 9
+    version: 67
   - path: ROOT/tech_design/internal/tools/write_file
-    version: 40
+    version: 41
 implements:
   - cmd/subagent-mcp/main.go
 ---
@@ -44,7 +44,7 @@ the MCP server, registers tools, and runs the server.
      on the tool so that `tools/list` advertises the maximum
      result size to the client.
    - `write_file.HandleWriteFile` with `WriteFileArgs`
-   - `patch_file.HandlePatchFile` with `PatchFileArgs`
+   - `find_replace.HandleFindReplace` with `FindReplaceArgs`
 5. Call `s.Run(context.Background(), &mcp.StdioTransport{})`.
 6. If `Run` returns an error, print it to stderr and exit 1.
 7. Otherwise exit 0.
@@ -60,7 +60,7 @@ subagents.
 Tools:
   load_chain     Load the spec chain for a node.
   write_file     Write a generated file to disk.
-  patch_file     Apply a unified diff to an existing file.
+  find_replace   Replace a specific string in an existing file.
 
 The subagent should have no other tools available — no file
 read, write, or search capabilities beyond what this server

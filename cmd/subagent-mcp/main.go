@@ -1,4 +1,4 @@
-// code-from-spec: ROOT/tech_design/server@v58
+// code-from-spec: ROOT/tech_design/server@v60
 package main
 
 import (
@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/CodeFromSpec/tool-subagent-mcp/v2/internal/find_replace"
 	"github.com/CodeFromSpec/tool-subagent-mcp/v2/internal/load_chain"
-	"github.com/CodeFromSpec/tool-subagent-mcp/v2/internal/patch_file"
 	"github.com/CodeFromSpec/tool-subagent-mcp/v2/internal/write_file"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -24,7 +24,7 @@ subagents.
 Tools:
   load_chain     Load the spec chain for a node.
   write_file     Write a generated file to disk.
-  patch_file     Apply a unified diff to an existing file.
+  find_replace   Replace a specific string in an existing file.
 
 The subagent should have no other tools available — no file
 read, write, or search capabilities beyond what this server
@@ -82,12 +82,13 @@ func main() {
 		Description: "Write a generated source file to disk. The path must be one of the files declared in the node's implements list. Overwrites existing content.",
 	}, write_file.HandleWriteFile)
 
-	// patch_file — applies a unified diff to an existing source file
-	// after validating the path against the node's implements list.
+	// find_replace — replaces a specific string in an existing source
+	// file after validating the path against the node's implements list.
+	// The old_string must appear exactly once in the file.
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "patch_file",
-		Description: "Apply a unified diff to an existing source file. The path must be one of the files declared in the node's implements list. The file must already exist.",
-	}, patch_file.HandlePatchFile)
+		Name:        "find_replace",
+		Description: "Replace a specific string in an existing source file. The old_string must appear exactly once. The path must be one of the files declared in the node's implements list. The file must already exist.",
+	}, find_replace.HandleFindReplace)
 
 	// Steps 5–7: Run the server over stdio. Blocks until the client
 	// disconnects. On error, print to stderr and exit 1.

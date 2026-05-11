@@ -1,6 +1,6 @@
 ---
-version: 40
-parent_version: 7
+version: 41
+parent_version: 8
 depends_on:
   - path: ROOT/external/mcp-go-sdk
     version: 4
