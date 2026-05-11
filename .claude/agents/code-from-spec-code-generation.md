@@ -68,14 +68,12 @@ giving you a name (e.g., `ROOT/tech_design/server`).
 
    - **File does not exist yet** — use `write_file` to create it
      from scratch.
-   - **File exists and needs extensive changes** — use `write_file`
+   - **File exists and only the spec comment version changed** —
+     use `find_replace` to update the `code-from-spec:` comment.
+     Copy the `old_string` exactly from the existing file content
+     in the chain.
+   - **File exists and code needs to change** — use `write_file`
      to overwrite it entirely.
-   - **File exists and only a small part needs to change** (e.g.,
-     spec comment version, a single condition, a few lines) — use
-     `find_replace` for each surgical edit. Copy the `old_string`
-     exactly from the existing file content in the chain — do not
-     type it from memory. If a `find_replace` fails, fall back to
-     `write_file`.
 
 ## Rules
 
