@@ -1,5 +1,11 @@
-// code-from-spec: TEST/tech_design/server@v35
+// code-from-spec: TEST/tech_design/server@v37
 
+// Package main contains integration tests for the subagent-mcp binary.
+// Tests invoke the compiled binary as a subprocess and verify its behavior:
+// exit codes, stderr output, stdout output, and MCP protocol responses.
+//
+// The binary is built once in TestMain into a temp directory. On Windows,
+// the binary name includes the ".exe" extension.
 package main
 
 import (
@@ -31,13 +37,13 @@ func TestMain(m *testing.M) {
 	defer os.RemoveAll(tmpDir)
 
 	// Determine the binary output path. On Windows, the binary must have
-	// the .exe extension.
+	// the .exe extension so the OS can locate and execute it.
 	binaryPath = tmpDir + "/subagent-mcp"
 	if runtime.GOOS == "windows" {
 		binaryPath += ".exe"
 	}
 
-	// Build the binary.
+	// Build the binary from the current directory (cmd/subagent-mcp).
 	cmd := exec.Command("go", "build", "-o", binaryPath, ".")
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
@@ -102,8 +108,6 @@ func TestShortHelpFlag(t *testing.T) {
 // usage to stderr and exits 1.
 func TestUnrecognizedArgument(t *testing.T) {
 	cmd := exec.Command(binaryPath, "something")
-	// Output() captures stdout and returns an error if exit code != 0.
-	// We need stderr, so use CombinedOutput or capture separately.
 	var stderrBuf strings.Builder
 	cmd.Stderr = &stderrBuf
 
@@ -167,6 +171,9 @@ func TestMultipleArguments(t *testing.T) {
 // sends a tools/list request. Returns the parsed tools array and a cleanup
 // function that closes stdin and waits for the process.
 //
+// This is a test helper — prefixed with "test" per ROOT/tech_design convention
+// to avoid collision with unexported names in the package under test.
+//
 // Callers must invoke the returned cleanup function when done.
 func testStartMCPSubprocess(t *testing.T) ([]interface{}, func()) {
 	t.Helper()
@@ -181,6 +188,8 @@ func testStartMCPSubprocess(t *testing.T) ([]interface{}, func()) {
 	if err != nil {
 		t.Fatalf("failed to create stdout pipe: %v", err)
 	}
+	// Let subprocess stderr pass through to the test runner output for
+	// easier debugging.
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
@@ -191,6 +200,7 @@ func testStartMCPSubprocess(t *testing.T) ([]interface{}, func()) {
 	reader := bufio.NewReader(stdout)
 
 	// Step 1: Send the initialize request (JSON-RPC 2.0).
+	// The protocolVersion is the current MCP protocol version.
 	initializeReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","clientInfo":{"name":"test-client","version":"1.0.0"}}}` + "\n"
 	if _, err := io.WriteString(stdin, initializeReq); err != nil {
 		t.Fatalf("failed to write initialize request: %v", err)
@@ -202,7 +212,7 @@ func testStartMCPSubprocess(t *testing.T) ([]interface{}, func()) {
 		t.Fatalf("failed to read initialize response: %v", err)
 	}
 
-	// Verify that the initialize response is valid JSON-RPC with id 1.
+	// Verify that the initialize response is valid JSON-RPC with no error.
 	var initResult map[string]interface{}
 	if err := json.Unmarshal(initResp, &initResult); err != nil {
 		t.Fatalf("failed to parse initialize response: %v\nraw: %s", err, string(initResp))
@@ -211,7 +221,8 @@ func testStartMCPSubprocess(t *testing.T) ([]interface{}, func()) {
 		t.Fatalf("initialize returned an error: %v", initResult["error"])
 	}
 
-	// Step 2: Send the initialized notification (no id — it's a notification).
+	// Step 2: Send the initialized notification (no id — it is a notification,
+	// not a request, so the server sends no response).
 	initializedNotif := `{"jsonrpc":"2.0","method":"notifications/initialized"}` + "\n"
 	if _, err := io.WriteString(stdin, initializedNotif); err != nil {
 		t.Fatalf("failed to write initialized notification: %v", err)
@@ -263,11 +274,14 @@ func testStartMCPSubprocess(t *testing.T) ([]interface{}, func()) {
 // sends an MCP initialize request followed by a tools/list request over stdin
 // (JSON-RPC 2.0, newline-delimited), and verifies that the load_chain tool
 // has _meta["anthropic/maxResultSizeChars"] equal to 500000.
+//
+// This validates that the server sets Meta: mcp.Meta{"anthropic/maxResultSizeChars": 500000}
+// on the load_chain tool registration as required by ROOT/tech_design/server.
 func TestToolsListAdvertisesMaxResultSizeChars(t *testing.T) {
 	tools, cleanup := testStartMCPSubprocess(t)
 	defer cleanup()
 
-	// Find the load_chain tool and check its _meta field.
+	// Search through the tools list for the load_chain tool.
 	var found bool
 	for _, toolRaw := range tools {
 		tool, ok := toolRaw.(map[string]interface{})
@@ -292,7 +306,7 @@ func TestToolsListAdvertisesMaxResultSizeChars(t *testing.T) {
 			t.Fatalf("load_chain _meta missing 'anthropic/maxResultSizeChars'.\n_meta: %v", meta)
 		}
 
-		// JSON numbers are parsed as float64 by default.
+		// JSON numbers are parsed as float64 by default in Go's encoding/json.
 		maxSizeFloat, ok := maxSize.(float64)
 		if !ok {
 			t.Fatalf("expected anthropic/maxResultSizeChars to be a number, got %T: %v", maxSize, maxSize)
@@ -311,8 +325,13 @@ func TestToolsListAdvertisesMaxResultSizeChars(t *testing.T) {
 // TestToolsListAdvertisesAllThreeTools starts the binary as a subprocess,
 // sends an MCP initialize request followed by a tools/list request over stdin
 // (JSON-RPC 2.0, newline-delimited), and verifies that all three expected
-// tools — load_chain, write_file, and patch_file — are present in the
+// tools — load_chain, write_file, and find_replace — are present in the
 // response.
+//
+// Per ROOT/tech_design/server, the server registers:
+//   - load_chain (HandleLoadChain)
+//   - write_file (HandleWriteFile)
+//   - find_replace (HandleFindReplace)
 func TestToolsListAdvertisesAllThreeTools(t *testing.T) {
 	tools, cleanup := testStartMCPSubprocess(t)
 	defer cleanup()
@@ -331,7 +350,10 @@ func TestToolsListAdvertisesAllThreeTools(t *testing.T) {
 	}
 
 	// Verify each required tool is present.
-	required := []string{"load_chain", "write_file", "patch_file"}
+	// The three tools registered by the server are load_chain, write_file,
+	// and find_replace (as specified in TEST/tech_design/server v37 and
+	// ROOT/tech_design/server).
+	required := []string{"load_chain", "write_file", "find_replace"}
 	for _, name := range required {
 		if !advertised[name] {
 			t.Errorf("expected tool %q not found in tools/list response.\nadvertised: %v", name, advertised)
