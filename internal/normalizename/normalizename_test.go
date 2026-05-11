@@ -1,4 +1,4 @@
-// code-from-spec: TEST/tech_design/internal/normalizename@v2
+// code-from-spec: TEST/tech_design/internal/normalizename@v4
 
 // Package normalizename tests the NormalizeName function.
 // These are pure function tests — no filesystem or temp directories needed.

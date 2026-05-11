@@ -1,4 +1,4 @@
-// code-from-spec: TEST/tech_design/internal/parsenode@v7
+// code-from-spec: TEST/tech_design/internal/parsenode@v9
 
 // Package parsenode tests cover the ParseNode function.
 // Tests use t.TempDir() to create isolated spec file trees and change the
@@ -810,7 +810,7 @@ Intent.
 	}
 }
 
-// TestDuplicatePublicSameCaseerifies ErrDuplicatePublic when two # Public
+// TestDuplicatePublicSameCase verifies ErrDuplicatePublic when two # Public
 // headings with the same case exist.
 func TestDuplicatePublicSameCase(t *testing.T) {
 	dir := t.TempDir()

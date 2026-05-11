@@ -1,5 +1,8 @@
-// code-from-spec: TEST/tech_design/internal/frontmatter@v13
+// code-from-spec: TEST/tech_design/internal/frontmatter@v15
 
+// Package frontmatter provides tests for the frontmatter package.
+// Tests use t.TempDir() for isolation and validate ParseFrontmatter
+// behavior across happy-path, edge-case, and failure scenarios.
 package frontmatter
 
 import (
@@ -261,6 +264,7 @@ func TestEmptyFrontmatter(t *testing.T) {
 
 // TestFileWithOnlyFrontmatter verifies that a file that ends
 // immediately after the closing delimiter is parsed without error.
+// The body is not read by ParseFrontmatter, so an empty body is fine.
 func TestFileWithOnlyFrontmatter(t *testing.T) {
 	dir := t.TempDir()
 	content := `---

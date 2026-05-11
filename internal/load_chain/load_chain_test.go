@@ -1,12 +1,11 @@
-// code-from-spec: TEST/tech_design/internal/tools/load_chain@v20
-// spec: TEST/tech_design/internal/tools/load_chain@v20
+// code-from-spec: TEST/tech_design/internal/tools/load_chain@v23
 package load_chain
 
 // This test file verifies the HandleLoadChain tool handler.
 // Each test creates an isolated project structure using t.TempDir(),
 // changes the working directory to the temp dir for the duration of
-// the test, and calls handleLoadChain (the unexported wrapper or the
-// exported HandleLoadChain) to exercise the full code path.
+// the test, and calls HandleLoadChain (the exported handler) to exercise
+// the full code path.
 //
 // Spec files are placed at the paths that logicalnames.PathFromLogicalName
 // produces:
@@ -684,7 +683,7 @@ func TestHandleLoadChain_NonExistingCodeFilesOmitted(t *testing.T) {
 
 // TestHandleLoadChain_AncestorWithNoPublicSectionOmitted verifies that an
 // ancestor with no # Public section is omitted from the chain entirely.
-// Per v20 spec: "The chain content does not contain a file section for ROOT."
+// Per spec: "The chain content does not contain a file section for ROOT."
 func TestHandleLoadChain_AncestorWithNoPublicSectionOmitted(t *testing.T) {
 	dir := t.TempDir()
 	testChdir(t, dir)

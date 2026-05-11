@@ -1,4 +1,4 @@
-// code-from-spec: TEST/tech_design/internal/logical_names@v17
+// code-from-spec: TEST/tech_design/internal/logical_names@v19
 package logicalnames
 
 import "testing"
@@ -257,7 +257,7 @@ func TestParentLogicalName_TESTWithoutPath(t *testing.T) {
 	}
 }
 
-// TEST/x — parent is ROOT/x.
+// TEST/x — parent is ROOT/x (qualifier stripped from TEST path).
 func TestParentLogicalName_TESTWithPath(t *testing.T) {
 	got, ok := ParentLogicalName("TEST/domain/config")
 	if !ok {
