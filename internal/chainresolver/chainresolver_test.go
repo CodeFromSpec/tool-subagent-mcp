@@ -1,4 +1,4 @@
-// code-from-spec: TEST/tech_design/internal/chain_resolver@v24
+// code-from-spec: TEST/tech_design/internal/chain_resolver@v26
 
 // Package chainresolver provides tests for the ResolveChain function.
 // Tests use t.TempDir() to create isolated spec trees, change the working
@@ -614,7 +614,7 @@ func TestResolveChain_UnreadableFrontmatter(t *testing.T) {
 }
 
 // TestResolveChain_UnresolvableDependency verifies that a dependency whose
-// file does not exist on disk causes an error containing "cannot resolve
+// logical name cannot be resolved returns an error containing "cannot resolve
 // logical name".
 func TestResolveChain_UnresolvableDependency(t *testing.T) {
 	dir := t.TempDir()

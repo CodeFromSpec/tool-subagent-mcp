@@ -1,5 +1,4 @@
-// spec: TEST/tech_design/internal/tools/patch_file@v7
-// code-from-spec: TEST/tech_design/internal/tools/patch_file@v7
+// code-from-spec: TEST/tech_design/internal/tools/patch_file@v10
 
 package patch_file
 

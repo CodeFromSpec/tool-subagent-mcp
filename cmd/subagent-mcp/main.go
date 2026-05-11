@@ -1,5 +1,4 @@
-// code-from-spec: ROOT/tech_design/server@v52
-// spec: ROOT/tech_design/server@v52
+// code-from-spec: ROOT/tech_design/server@v58
 package main
 
 import (
@@ -14,8 +13,9 @@ import (
 )
 
 // usageMessage is the help text printed when the binary is invoked
-// with arguments. Defined as a constant so it is shared between
-// the help (stdout) and error (stderr) paths.
+// with --help/-h/help (stdout, exit 0) or any other argument
+// (stderr, exit 1). Defined as a constant so the same text is
+// shared between both paths.
 const usageMessage = `Usage: subagent-mcp
 
 Starts an MCP server over stdin/stdout for Code from Spec
@@ -43,9 +43,8 @@ MCP configuration example:
 `
 
 func main() {
-	// Step 1–2: Argument validation.
-	// Any argument triggers the usage message. Help flags go to
-	// stdout with exit 0; anything else goes to stderr with exit 1.
+	// Step 1: Handle help flags — print usage to stdout and exit 0.
+	// Step 2: Reject any other argument — print usage to stderr and exit 1.
 	if len(os.Args) > 1 {
 		arg := os.Args[1]
 		if arg == "--help" || arg == "-h" || arg == "help" {
@@ -57,42 +56,41 @@ func main() {
 	}
 
 	// Step 3: Create the MCP server.
+	// Implementation.Name is "subagent-mcp" as required by the spec.
 	server := mcp.NewServer(&mcp.Implementation{
 		Name: "subagent-mcp",
 	}, nil)
 
-	// Step 4: Register tools.
-	// Tool names and descriptions come from the corresponding tool
-	// definition specs (load_chain, write_file, patch_file).
+	// Step 4: Register tools using mcp.AddTool.
+	// Tool names and descriptions are taken verbatim from the
+	// corresponding tool definition specs.
 
-	// Register load_chain — loads the spec chain for a given
-	// logical name and returns all relevant spec files concatenated.
-	// Meta advertises the maximum result size so clients (e.g.
-	// Claude) know the tool may return large responses.
+	// load_chain — loads the spec chain for a given logical name and
+	// returns all relevant spec files concatenated in a single response.
+	// Meta advertises the maximum result size (500000 chars) so that
+	// tools/list exposes this constraint to the client (e.g. Claude).
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "load_chain",
 		Description: "Load the spec chain context for a given logical name. Returns all relevant spec files concatenated in a single response.",
 		Meta:        mcp.Meta{"anthropic/maxResultSizeChars": 500000},
 	}, load_chain.HandleLoadChain)
 
-	// Register write_file — writes a generated source file to disk,
+	// write_file — writes a generated source file to disk after
 	// validating the path against the node's implements list.
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "write_file",
 		Description: "Write a generated source file to disk. The path must be one of the files declared in the node's implements list. Overwrites existing content.",
 	}, write_file.HandleWriteFile)
 
-	// Register patch_file — applies a unified diff to an existing
-	// source file, validating the path against the node's implements
-	// list. The file must already exist; use write_file to create new
-	// files.
+	// patch_file — applies a unified diff to an existing source file
+	// after validating the path against the node's implements list.
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "patch_file",
 		Description: "Apply a unified diff to an existing source file. The path must be one of the files declared in the node's implements list. The file must already exist.",
 	}, patch_file.HandlePatchFile)
 
-	// Step 5–7: Run the server over stdio. Blocks until the client
-	// disconnects. If Run returns an error, print it and exit 1.
+	// Steps 5–7: Run the server over stdio. Blocks until the client
+	// disconnects. On error, print to stderr and exit 1.
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
 		os.Exit(1)
