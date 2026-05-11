@@ -1,6 +1,6 @@
 ---
-version: 25
-subject_version: 74
+version: 26
+subject_version: 80
 implements:
   - internal/chainresolver/chainresolver_test.go
 ---

@@ -1,6 +1,6 @@
 ---
-version: 18
-subject_version: 30
+version: 19
+subject_version: 33
 implements:
   - internal/logicalnames/logicalnames_test.go
 ---

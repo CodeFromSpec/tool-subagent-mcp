@@ -1,6 +1,6 @@
 ---
-version: 3
-subject_version: 3
+version: 4
+subject_version: 5
 implements:
   - internal/normalizename/normalizename_test.go
 ---

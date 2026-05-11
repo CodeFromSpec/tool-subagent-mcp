@@ -1,6 +1,6 @@
 ---
-version: 14
-subject_version: 33
+version: 15
+subject_version: 36
 implements:
   - internal/frontmatter/frontmatter_test.go
 ---

@@ -1,9 +1,9 @@
 ---
-version: 31
-parent_version: 12
+version: 33
+parent_version: 14
 depends_on:
   - path: ROOT/external/codefromspec
-    version: 4
+    version: 5
 implements:
   - internal/logicalnames/logicalnames.go
 ---

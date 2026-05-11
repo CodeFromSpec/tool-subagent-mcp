@@ -1,11 +1,11 @@
 ---
-version: 34
-parent_version: 12
+version: 36
+parent_version: 14
 depends_on:
   - path: ROOT/external/codefromspec
-    version: 4
+    version: 5
   - path: ROOT/external/goccy-go-yaml
-    version: 2
+    version: 3
 implements:
   - internal/frontmatter/frontmatter.go
 ---

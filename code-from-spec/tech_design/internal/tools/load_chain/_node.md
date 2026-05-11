@@ -1,23 +1,23 @@
 ---
-version: 64
-parent_version: 5
+version: 66
+parent_version: 7
 depends_on:
   - path: ROOT/external/google-uuid
-    version: 3
+    version: 4
   - path: ROOT/external/mcp-go-sdk
-    version: 3
+    version: 4
   - path: ROOT/tech_design/internal/chain_resolver
-    version: 74
+    version: 80
   - path: ROOT/tech_design/internal/frontmatter
-    version: 33
+    version: 36
   - path: ROOT/tech_design/internal/logical_names
-    version: 30
-  - path: ROOT/tech_design/internal/normalizename
-    version: 3
-  - path: ROOT/tech_design/internal/parsenode
     version: 33
+  - path: ROOT/tech_design/internal/normalizename
+    version: 5
+  - path: ROOT/tech_design/internal/parsenode
+    version: 36
   - path: ROOT/tech_design/internal/pathvalidation
-    version: 12
+    version: 14
 implements:
   - internal/load_chain/load_chain.go
 ---

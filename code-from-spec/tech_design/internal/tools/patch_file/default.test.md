@@ -1,6 +1,6 @@
 ---
-version: 9
-subject_version: 7
+version: 10
+subject_version: 9
 implements:
   - internal/patch_file/patch_file_test.go
 ---
