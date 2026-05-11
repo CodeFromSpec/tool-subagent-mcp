@@ -1,5 +1,5 @@
 ---
-version: 63
+version: 64
 parent_version: 5
 depends_on:
   - path: ROOT/external/google-uuid
@@ -30,20 +30,18 @@ content as a single MCP text response.
 
 # Public
 
-## Context
-
-### Package
+## Package
 
 `package load_chain`
 
-### Target node
+## Target node
 
 The target node is identified by its logical name — either a leaf
 spec node (`ROOT/...`) or a test node (`TEST/...`). Examples:
 `ROOT/payments/fees/calculation`,
 `TEST/payments/fees/calculation`.
 
-## Contracts
+## Interface
 
 ### Tool definition
 
@@ -117,7 +115,9 @@ path: internal/payments/fees/calculation.go
 <<<END_FILE_550e8400-e29b-41d4-a716-446655440000>>>
 ```
 
-### Algorithm
+# Private
+
+## Implementation
 
 1. Validate that `args.LogicalName` starts with `ROOT/` or
    `TEST/` (or equals `ROOT` or `TEST`). If not, return a

@@ -1,5 +1,5 @@
 ---
-version: 3
+version: 4
 parent_version: 12
 depends_on:
   - path: ROOT/external/codefromspec
@@ -16,19 +16,15 @@ Normalizes heading and logical name text for comparison.
 
 # Public
 
-## Context
-
-### Package
+## Package
 
 `package normalizename`
 
-### Dependencies
+## Dependencies
 
 - `golang.org/x/text/cases` — Unicode simple case folding.
 
-## Contracts
-
-### Interface
+## Interface
 
 ```go
 func NormalizeName(raw string) string

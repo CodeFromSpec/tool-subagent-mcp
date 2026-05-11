@@ -1,5 +1,5 @@
 ---
-version: 30
+version: 31
 parent_version: 12
 depends_on:
   - path: ROOT/external/codefromspec
@@ -14,15 +14,11 @@ Centralizes conversion between logical names and file paths.
 
 # Public
 
-## Context
-
-### Package
+## Package
 
 `package logicalnames`
 
-## Contracts
-
-### Interface
+## Interface
 
 ```go
 func PathFromLogicalName(logicalName string) (string, bool)

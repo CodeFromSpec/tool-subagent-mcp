@@ -1,5 +1,5 @@
 ---
-version: 7
+version: 8
 parent_version: 5
 depends_on:
   - path: ROOT/external/bluekeyes-go-gitdiff
@@ -24,18 +24,16 @@ node's `implements` list and the project root.
 
 # Public
 
-## Context
-
-### Package
+## Package
 
 `package patch_file`
 
-### Dependencies
+## Dependencies
 
 - `github.com/bluekeyes/go-gitdiff/gitdiff` — parsing and
   applying unified diffs.
 
-## Contracts
+## Interface
 
 ### Tool definition
 
@@ -70,7 +68,9 @@ func HandlePatchFile(
 ) (*mcp.CallToolResult, any, error)
 ```
 
-### Algorithm
+# Private
+
+## Implementation
 
 1. Validate that `args.LogicalName` starts with `ROOT/` or
    `TEST/` (or equals `ROOT` or `TEST`). If not, return a

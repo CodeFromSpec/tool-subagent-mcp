@@ -1,5 +1,5 @@
 ---
-version: 33
+version: 34
 parent_version: 12
 depends_on:
   - path: ROOT/external/codefromspec
@@ -17,19 +17,15 @@ and external dependency files.
 
 # Public
 
-## Context
-
-### Package
+## Package
 
 `package frontmatter`
 
-### YAML dependency
+## Dependencies
 
 Uses `github.com/goccy/go-yaml` for YAML parsing.
 
-## Contracts
-
-### Interface
+## Interface
 
 ```go
 type DependsOn struct {
@@ -62,7 +58,20 @@ Errors returned by `ParseFrontmatter` wrap the sentinel with
 context (file path, underlying error) using `fmt.Errorf`, so
 callers can match with `errors.Is()`.
 
-### Parsing
+### Error handling
+
+All errors wrap a sentinel so callers can use `errors.Is()`:
+
+| Sentinel | Returned when |
+|---|---|
+| `ErrRead` | The file cannot be read. |
+| `ErrFrontmatterParse` | The YAML frontmatter is malformed. |
+| `ErrFrontmatterMissing` | No `---` delimiters found at the top of the file. |
+| `ErrMissingVersion` | The `version` field is absent or zero. |
+
+# Private
+
+## Implementation
 
 The frontmatter is the YAML block between the first `---` and the
 second `---` at the top of the file. Everything after the second
@@ -80,8 +89,6 @@ Fields extracted:
 
 Unknown fields are ignored.
 
-### DependsOn structure
-
 Each `depends_on` entry has:
 
 | YAML key | Type | Required | Description |
@@ -89,19 +96,6 @@ Each `depends_on` entry has:
 | `path` | string | yes | Logical name of the dependency. |
 | `version` | int | yes | Known version of the dependency. |
 
-### Efficiency
-
 The parser reads line by line, extracts the frontmatter block, and
 stops as soon as the closing `---` is found. The file body is never
 read.
-
-### Error handling
-
-All errors wrap a sentinel so callers can use `errors.Is()`:
-
-| Sentinel | Returned when |
-|---|---|
-| `ErrRead` | The file cannot be read. |
-| `ErrFrontmatterParse` | The YAML frontmatter is malformed. |
-| `ErrFrontmatterMissing` | No `---` delimiters found at the top of the file. |
-| `ErrMissingVersion` | The `version` field is absent or zero. |

@@ -1,5 +1,5 @@
 ---
-version: 33
+version: 34
 parent_version: 12
 depends_on:
   - path: ROOT/external/codefromspec
@@ -21,21 +21,17 @@ representation of all sections.
 
 # Public
 
-## Context
-
-### Package
+## Package
 
 `package parsenode`
 
-### Dependencies
+## Dependencies
 
 - `github.com/yuin/goldmark` — CommonMark parsing of the body.
   The body is parsed into an AST; only level-1 and level-2
   headings are used as structural delimiters.
 
-## Contracts
-
-### Interface
+## Interface
 
 ```go
 type Subsection struct {
@@ -73,7 +69,20 @@ Errors returned by `ParseNode` wrap the sentinel with context
 (file path, underlying error) using `fmt.Errorf`, so callers
 can match with `errors.Is()`.
 
-### Parsing algorithm
+### Error sentinels
+
+| Sentinel | Returned when |
+|---|---|
+| `ErrRead` | The file cannot be read. |
+| `ErrFrontmatterMissing` | No `---` delimiters found at the top of the file. |
+| `ErrUnexpectedContent` | Non-heading content appears before the first level-1 heading. |
+| `ErrInvalidNodeName` | The first level-1 heading does not match the logical name. |
+| `ErrDuplicatePublic` | More than one level-1 heading normalizes to `public`. |
+| `ErrDuplicateSubsection` | Two or more level-2 headings within `# Public` have the same normalized text. |
+
+# Private
+
+## Implementation
 
 #### Step 1 — Resolve logical name
 
@@ -173,15 +182,3 @@ Leading and trailing blank lines in content are trimmed.
   delimiters. They appear inside `Section.Content` or
   `Subsection.Content` as raw markdown.
 
-### Error handling
-
-All errors wrap a sentinel so callers can use `errors.Is()`:
-
-| Sentinel | Returned when |
-|---|---|
-| `ErrRead` | The file cannot be read. |
-| `ErrFrontmatterMissing` | No `---` delimiters found at the top of the file. |
-| `ErrUnexpectedContent` | Non-heading content appears before the first level-1 heading. |
-| `ErrInvalidNodeName` | The first level-1 heading does not match the logical name. |
-| `ErrDuplicatePublic` | More than one level-1 heading normalizes to `public`. |
-| `ErrDuplicateSubsection` | Two or more level-2 headings within `# Public` have the same normalized text. |

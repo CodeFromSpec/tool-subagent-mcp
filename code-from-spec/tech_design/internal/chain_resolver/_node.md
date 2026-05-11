@@ -1,5 +1,5 @@
 ---
-version: 74
+version: 75
 parent_version: 12
 depends_on:
   - path: ROOT/external/codefromspec
@@ -19,15 +19,11 @@ given target logical name.
 
 # Public
 
-## Context
-
-### Package
+## Package
 
 `package chainresolver`
 
-## Contracts
-
-### Types
+## Interface
 
 ```go
 type ChainItem struct {
@@ -55,7 +51,16 @@ the `# Public` section of the file. When `Qualifier` is
 non-nil, the caller should use only the `## <qualifier>`
 subsection within `# Public`.
 
-### Algorithm
+### Error handling
+
+- If `logicalnames.PathFromLogicalName` returns false for any logical name →
+  return error: `"cannot resolve logical name: <name>"`.
+- If `ParseFrontmatter` fails → return error wrapping the
+  underlying error.
+
+# Private
+
+## Implementation
 
 **Step 1 — Ancestors and Target**
 
@@ -120,9 +125,3 @@ any other entry with the same `FilePath` and a non-nil
 
 When removing duplicates, keep the first occurrence.
 
-### Error handling
-
-- If `logicalnames.PathFromLogicalName` returns false for any logical name →
-  return error: `"cannot resolve logical name: <name>"`.
-- If `ParseFrontmatter` fails → return error wrapping the
-  underlying error.

@@ -1,5 +1,5 @@
 ---
-version: 38
+version: 39
 parent_version: 5
 depends_on:
   - path: ROOT/external/mcp-go-sdk
@@ -23,20 +23,18 @@ root, then writes the file to disk.
 
 # Public
 
-## Context
-
-### Package
+## Package
 
 `package write_file`
 
-### Target node
+## Target node
 
 The target node is identified by its logical name — either a leaf
 spec node (`ROOT/...`) or a test node (`TEST/...`). Examples:
 `ROOT/payments/fees/calculation`,
 `TEST/payments/fees/calculation`.
 
-## Contracts
+## Interface
 
 ### Tool definition
 
@@ -71,7 +69,9 @@ func HandleWriteFile(
 ) (*mcp.CallToolResult, any, error)
 ```
 
-### Algorithm
+# Private
+
+## Implementation
 
 1. Validate that `args.LogicalName` starts with `ROOT/` or
    `TEST/` (or equals `ROOT` or `TEST`). If not, return a

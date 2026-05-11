@@ -1,5 +1,5 @@
 ---
-version: 12
+version: 13
 parent_version: 12
 depends_on:
   - path: ROOT/external/owasp-path-traversal
@@ -16,13 +16,11 @@ writing files outside the intended project boundary.
 
 # Public
 
-## Context
-
-### Package
+## Package
 
 `package pathvalidation`
 
-### Threat model
+## Threat model
 
 When a tool accepts a file path as input and writes to disk,
 the path could attempt to escape the project directory using:
@@ -37,9 +35,7 @@ the path could attempt to escape the project directory using:
 This package provides a single validation function that callers
 use before any write operation.
 
-## Contracts
-
-### Interface
+## Interface
 
 ```go
 func ValidatePath(path string, projectRoot string) error
@@ -48,7 +44,16 @@ func ValidatePath(path string, projectRoot string) error
 Returns nil if the path is safe to write within `projectRoot`.
 Returns an error describing the violation otherwise.
 
-### Algorithm
+### Error messages
+
+- `"path is empty"`
+- `"path is absolute: <path>"`
+- `"path contains directory traversal: <path>"`
+- `"path resolves outside project root: <path>"`
+
+# Private
+
+## Implementation
 
 1. Reject empty paths.
 2. Reject absolute paths. Use `strings.HasPrefix(path, "/")` to
@@ -66,13 +71,6 @@ Returns an error describing the violation otherwise.
    evaluate the longest existing prefix.
 7. Verify that the resolved path starts with `projectRoot`.
    If not, the path escapes the project — reject it.
-
-### Error messages
-
-- `"path is empty"`
-- `"path is absolute: <path>"`
-- `"path contains directory traversal: <path>"`
-- `"path resolves outside project root: <path>"`
 
 ## Constraints
 
