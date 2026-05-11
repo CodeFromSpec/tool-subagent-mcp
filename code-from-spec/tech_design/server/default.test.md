@@ -1,6 +1,6 @@
 ---
-version: 33
-subject_version: 54
+version: 34
+subject_version: 56
 implements:
   - cmd/subagent-mcp/main_test.go
 ---

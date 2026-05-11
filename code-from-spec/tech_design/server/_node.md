@@ -1,6 +1,6 @@
 ---
-version: 54
-parent_version: 15
+version: 56
+parent_version: 17
 depends_on:
   - path: ROOT/external/mcp-go-sdk
     version: 3
@@ -23,15 +23,11 @@ the MCP server, registers tools, and runs the server.
 
 # Public
 
-## Context
-
-### Package
+## Package
 
 `package main`
 
-## Contracts
-
-### Startup sequence
+## Startup sequence
 
 1. If `len(os.Args) > 1` and `os.Args[1]` is `--help`, `-h`, or
    `help`, print the usage message to stdout and exit 0.
@@ -53,7 +49,7 @@ the MCP server, registers tools, and runs the server.
 6. If `Run` returns an error, print it to stderr and exit 1.
 7. Otherwise exit 0.
 
-### Usage message
+## Usage message
 
 ```
 Usage: subagent-mcp
@@ -82,7 +78,7 @@ MCP configuration example:
   }
 ```
 
-### Exit codes
+## Exit codes
 
 | Code | Meaning |
 |---|---|
