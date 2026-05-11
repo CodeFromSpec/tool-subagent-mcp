@@ -1,6 +1,6 @@
 ---
-version: 2
-parent_version: 1
+version: 3
+parent_version: 2
 ---
 
 # ROOT/external/golang-x-text

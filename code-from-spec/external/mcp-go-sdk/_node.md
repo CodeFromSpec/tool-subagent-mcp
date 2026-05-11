@@ -1,6 +1,6 @@
 ---
-version: 3
-parent_version: 1
+version: 4
+parent_version: 2
 ---
 
 # ROOT/external/mcp-go-sdk

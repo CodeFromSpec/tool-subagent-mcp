@@ -1,6 +1,6 @@
 ---
-version: 13
-parent_version: 15
+version: 15
+parent_version: 17
 ---
 
 # ROOT/tech_design/go_module
@@ -14,11 +14,6 @@ Documents the Go module configuration and how it is managed.
 If `go.mod` does not exist, initialize it with `go mod init`
 using the module path below. After code generation, run
 `go mod tidy` to update dependencies.
-
-## Contracts
-
-The module path is:
-`github.com/CodeFromSpec/tool-subagent-mcp/v2`
 
 ## Constraints
 

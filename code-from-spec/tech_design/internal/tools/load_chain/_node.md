@@ -1,5 +1,5 @@
 ---
-version: 62
+version: 63
 parent_version: 5
 depends_on:
   - path: ROOT/external/google-uuid
@@ -91,21 +91,21 @@ Code files include only `path:`.
 ```
 <<<FILE_550e8400-e29b-41d4-a716-446655440000>>>
 node: ROOT
-path: code-from-spec/spec/_node.md
+path: code-from-spec/_node.md
 
 <Public section body — no # Public heading>
 <<<END_FILE_550e8400-e29b-41d4-a716-446655440000>>>
 
 <<<FILE_550e8400-e29b-41d4-a716-446655440000>>>
 node: ROOT/payments/fees/calculation
-path: code-from-spec/spec/payments/fees/calculation/_node.md
+path: code-from-spec/payments/fees/calculation/_node.md
 
 <target content with reduced frontmatter>
 <<<END_FILE_550e8400-e29b-41d4-a716-446655440000>>>
 
 <<<FILE_550e8400-e29b-41d4-a716-446655440000>>>
 node: ROOT/architecture/backend
-path: code-from-spec/spec/architecture/backend/_node.md
+path: code-from-spec/architecture/backend/_node.md
 
 <Public section body — no # Public heading>
 <<<END_FILE_550e8400-e29b-41d4-a716-446655440000>>>
